@@ -1,0 +1,164 @@
+/**
+ * Agent class for managing AI interactions
+ */
+
+import type { Tool, StreamingEvent, Message } from '../types.js';
+
+export interface AgentOptions {
+  provider: any;
+  systemPrompt: string;
+  tools?: Tool[];
+  maxTokens?: number;
+  temperature?: number;
+}
+
+export class Agent {
+  private tools: Map<string, Tool> = new Map();
+  private messages: Message[] = [];
+  private maxTokens: number;
+  private temperature: number;
+
+  constructor(private options: AgentOptions) {
+    this.maxTokens = options.maxTokens || 4096;
+    this.temperature = options.temperature || 0.7;
+
+    if (options.tools) {
+      options.tools.forEach(tool => this.tools.set(tool.name, tool));
+    }
+  }
+
+  registerTool(tool: Tool): void {
+    this.tools.set(tool.name, tool);
+  }
+
+  unregisterTool(name: string): void {
+    this.tools.delete(name);
+  }
+
+  getTools(): Tool[] {
+    return Array.from(this.tools.values());
+  }
+
+  async *run(input: string): AsyncGenerator<StreamingEvent> {
+    this.messages.push({ role: 'user', content: input });
+
+    const fullMessages = [
+      { role: 'system' as const, content: this.options.systemPrompt },
+      ...this.messages,
+    ];
+
+    try {
+      const response = await this.options.provider.chat({
+        messages: fullMessages,
+        tools: Array.from(this.tools.values()).map(t => ({
+          type: 'function',
+          function: {
+            name: t.name,
+            description: t.description,
+            parameters: t.parameters,
+          },
+        })),
+        stream: true,
+        maxTokens: this.maxTokens,
+        temperature: this.temperature,
+      });
+
+      let currentContent = '';
+      let currentToolCalls: any[] = [];
+
+      for await (const chunk of response) {
+        // Handle text delta
+        if (chunk.delta?.content) {
+          currentContent += chunk.delta.content;
+          yield { type: 'text_delta', data: chunk.delta.content };
+        }
+
+        // Handle tool calls
+        if (chunk.delta?.tool_calls) {
+          for (const call of chunk.delta.tool_calls) {
+            const existing = currentToolCalls.find(c => c.id === call.id);
+            if (existing) {
+              existing.arguments += call.arguments || '';
+            } else {
+              currentToolCalls.push({
+                id: call.id,
+                name: call.name,
+                arguments: call.arguments || '',
+              });
+            }
+          }
+        }
+
+        // Tool calls complete
+        if (chunk.finish_reason === 'tool_calls' && currentToolCalls.length > 0) {
+          this.messages.push({
+            role: 'assistant',
+            content: currentContent,
+            toolCalls: currentToolCalls,
+          });
+
+          for (const toolCall of currentToolCalls) {
+            yield { type: 'tool_call', data: toolCall };
+
+            const tool = this.tools.get(toolCall.name);
+            if (!tool) {
+              yield {
+                type: 'tool_output',
+                data: { id: toolCall.id, error: `Tool not found: ${toolCall.name}` },
+              };
+              continue;
+            }
+
+            try {
+              const args = JSON.parse(toolCall.arguments);
+              const result = await tool.execute(args);
+              yield { type: 'tool_output', data: { id: toolCall.id, result } };
+              this.messages.push({
+                role: 'tool',
+                content: result,
+                toolCallId: toolCall.id,
+              });
+            } catch (error) {
+              const errorMsg = error instanceof Error ? error.message : String(error);
+              yield { type: 'tool_output', data: { id: toolCall.id, error: errorMsg } };
+              this.messages.push({
+                role: 'tool',
+                content: `Error: ${errorMsg}`,
+                toolCallId: toolCall.id,
+              });
+            }
+          }
+
+          // Continue conversation
+          yield* this.run('');
+          return;
+        }
+
+        // Conversation complete
+        if (chunk.finish_reason === 'stop') {
+          this.messages.push({ role: 'assistant', content: currentContent });
+          yield { type: 'done', data: { usage: chunk.usage } };
+        }
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      yield { type: 'error', data: errorMsg };
+    }
+  }
+
+  getMessages(): Message[] {
+    return this.messages;
+  }
+
+  reset(): void {
+    this.messages = [];
+  }
+
+  setSystemPrompt(prompt: string): void {
+    this.options.systemPrompt = prompt;
+  }
+
+  getSystemPrompt(): string {
+    return this.options.systemPrompt;
+  }
+}

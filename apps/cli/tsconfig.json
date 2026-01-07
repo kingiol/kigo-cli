@@ -1,0 +1,1 @@
+{"extends": "../../tsconfig.base.json", "compilerOptions": {"outDir": "./dist", "rootDir": "./src", "composite": true, "preserveSymlinks": true}, "include": ["src/**/*"], "references": [{"path": "../../packages/core"}, {"path": "../../packages/tools"}, {"path": "../../packages/mcp"}, {"path": "../../packages/auth"}]}
