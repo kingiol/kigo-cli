@@ -1,1 +1,38 @@
-{"name": "@koder/tools", "version": "0.1.0", "type": "module", "main": "./dist/index.js", "types": "./dist/index.d.ts", "exports": {".": {"types": "./dist/index.d.ts", "default": "./dist/index.js"}, "./registry.js": {"types": "./dist/registry.d.ts", "default": "./dist/registry.js"}, "./skill/loader.js": {"types": "./dist/skill/loader.d.ts", "default": "./dist/skill/loader.js"}}, "scripts": {"build": "tsc", "test": "vitest run", "lint": "eslint src/**/*.ts"}, "dependencies": {"@koder/core": "workspace:*", "axios": "^1.6.5", "cheerio": "^1.0.0-rc.12", "fast-glob": "^3.3.2", "gray-matter": "^4.0.3", "parse-diff": "^0.11.1", "zod": "^3.22.4"}, "devDependencies": {"@types/node": "^20.11.0"}}
+{
+  "name": "@koder/tools",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./registry.js": {
+      "types": "./dist/registry.d.ts",
+      "default": "./dist/registry.js"
+    },
+    "./skill/loader.js": {
+      "types": "./dist/skill/loader.d.ts",
+      "default": "./dist/skill/loader.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "lint": "eslint src/**/*.ts"
+  },
+  "dependencies": {
+    "@koder/core": "workspace:*",
+    "axios": "^1.6.5",
+    "cheerio": "^1.0.0-rc.12",
+    "fast-glob": "^3.3.2",
+    "gray-matter": "^4.0.3",
+    "parse-diff": "^0.11.1",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0"
+  }
+}

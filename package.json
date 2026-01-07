@@ -1,30 +1,30 @@
 {
-"name": "koder-node",
-"version": "0.1.0",
-"description": "AI coding assistant for the terminal - Node.js port of Koder",
-"type": "module",
-"private": true,
-"workspaces": [
-"packages/*",
-"apps/*"
-],
-"scripts": {
-"build": "turbo run build",
-"test": "turbo run test",
-"lint": "turbo run lint",
-"format": "prettier --write \"**/*.{ts,js,md,json}\"",
-"dev": "pnpm --filter @koder/cli dev"
-},
-"devDependencies": {
-"@types/node": "^20.11.0",
-"eslint": "^8.56.0",
-"prettier": "^3.2.4",
-"turbo": "^2.0.0",
-"typescript": "^5.3.3",
-"vitest": "^1.2.0"
-},
-"packageManager": "pnpm@8.14.1",
-"engines": {
-"node": ">=20.0.0"
-}
+  "name": "koder-node",
+  "version": "0.1.0",
+  "description": "AI coding assistant for the terminal - Node.js port of Koder",
+  "type": "module",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "format": "prettier --write \"**/*.{ts,js,md,json}\"",
+    "dev": "pnpm --filter @koder/cli dev"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "eslint": "^8.56.0",
+    "prettier": "^3.2.4",
+    "turbo": "^2.0.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.0"
+  },
+  "packageManager": "pnpm@8.14.1",
+  "engines": {
+    "node": ">=20.0.0"
+  }
 }

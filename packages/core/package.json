@@ -1,1 +1,52 @@
-{"name": "@koder/core", "version": "0.1.0", "type": "module", "main": "./dist/index.js", "types": "./dist/index.d.ts", "exports": {".": {"types": "./dist/index.d.ts", "default": "./dist/index.js"}, "./types.js": {"types": "./dist/types.d.ts", "default": "./dist/types.js"}, "./agent/Agent.js": {"types": "./dist/agent/Agent.d.ts", "default": "./dist/agent/Agent.js"}, "./agent/Scheduler.js": {"types": "./dist/agent/Scheduler.d.ts", "default": "./dist/agent/Scheduler.js"}, "./session/Session.js": {"types": "./dist/session/Session.d.ts", "default": "./dist/session/Session.js"}, "./models/ProviderFactory.js": {"types": "./dist/models/ProviderFactory.d.ts", "default": "./dist/models/ProviderFactory.js"}}, "scripts": {"build": "tsc", "test": "vitest run", "lint": "eslint src/**/*.ts"}, "dependencies": {"@anthropic-ai/sdk": "^0.71.2", "better-sqlite3": "^12.5.0", "gpt-tokenizer": "^2.2.0", "openai": "^4.28.0", "zod": "^3.22.4"}, "devDependencies": {"@types/better-sqlite3": "^7.6.9", "@types/node": "^20.11.0"}, "peerDependencies": {"zod": "^3.22.4"}}
+{
+  "name": "@koder/core",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./types.js": {
+      "types": "./dist/types.d.ts",
+      "default": "./dist/types.js"
+    },
+    "./agent/Agent.js": {
+      "types": "./dist/agent/Agent.d.ts",
+      "default": "./dist/agent/Agent.js"
+    },
+    "./agent/Scheduler.js": {
+      "types": "./dist/agent/Scheduler.d.ts",
+      "default": "./dist/agent/Scheduler.js"
+    },
+    "./session/Session.js": {
+      "types": "./dist/session/Session.d.ts",
+      "default": "./dist/session/Session.js"
+    },
+    "./models/ProviderFactory.js": {
+      "types": "./dist/models/ProviderFactory.d.ts",
+      "default": "./dist/models/ProviderFactory.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "lint": "eslint src/**/*.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.2",
+    "better-sqlite3": "^12.5.0",
+    "gpt-tokenizer": "^2.2.0",
+    "openai": "^4.28.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.9",
+    "@types/node": "^20.11.0"
+  },
+  "peerDependencies": {
+    "zod": "^3.22.4"
+  }
+}

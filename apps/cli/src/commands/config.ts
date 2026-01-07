@@ -2,16 +2,18 @@
  * Config commands
  */
 
-import { Command } from 'commander';
-import { getConfigManager } from '../config/ConfigManager.js';
-import * as yaml from 'js-yaml';
+import { Command } from "commander";
+import { getConfigManager } from "../config/ConfigManager.js";
+import * as yaml from "js-yaml";
 
 export function configCommands(program: Command): void {
-  const configCmd = program.command('config').description('Manage configuration');
+  const configCmd = program
+    .command("config")
+    .description("Manage configuration");
 
   configCmd
-    .command('show')
-    .description('Show current configuration')
+    .command("show")
+    .description("Show current configuration")
     .action(async () => {
       const manager = getConfigManager();
       const config = await manager.load();
@@ -19,50 +21,50 @@ export function configCommands(program: Command): void {
     });
 
   configCmd
-    .command('path')
-    .description('Show config file path')
+    .command("path")
+    .description("Show config file path")
     .action(async () => {
       const manager = getConfigManager();
-      console.log('Config file:', manager.getPath());
+      console.log("Config file:", manager.getPath());
     });
 
   configCmd
-    .command('edit')
-    .description('Open config in editor')
+    .command("edit")
+    .description("Open config in editor")
     .action(async () => {
-      const editor = process.env.EDITOR || 'vi';
+      const editor = process.env.EDITOR || "vi";
       const manager = getConfigManager();
-      const { spawn } = await import('node:child_process');
-      spawn(editor, [manager.getPath()], { stdio: 'inherit' });
+      const { spawn } = await import("node:child_process");
+      spawn(editor, [manager.getPath()], { stdio: "inherit" });
     });
 
   configCmd
-    .command('init')
-    .description('Initialize config with defaults')
+    .command("init")
+    .description("Initialize config with defaults")
     .action(async () => {
       const manager = getConfigManager();
       await manager.save({
-        model: { name: 'gpt-4o', provider: 'openai' },
+        model: { name: "gpt-4o", provider: "openai" },
         cli: { stream: true },
         mcpServers: [],
         skills: {
           enabled: true,
-          projectSkillsDir: '.koder/skills',
-          userSkillsDir: '~/.koder/skills',
+          projectSkillsDir: ".koder/skills",
+          userSkillsDir: "~/.koder/skills",
         },
       });
-      console.log('Config initialized at:', manager.getPath());
+      console.log("Config initialized at:", manager.getPath());
     });
 
   configCmd
-    .command('set <key> <value>')
-    .description('Set a config value (e.g., model.name gpt-4o)')
+    .command("set <key> <value>")
+    .description("Set a config value (e.g., model.name gpt-4o)")
     .action(async (key, value) => {
       const manager = getConfigManager();
       const config = await manager.load();
 
       // Parse nested key (e.g., "model.name")
-      const keys = key.split('.');
+      const keys = key.split(".");
       let current: any = config;
 
       for (let i = 0; i < keys.length - 1; i++) {
