@@ -35,7 +35,10 @@ export function parseDiff(diffText: string): DiffFile[] {
 
     // Hunk header
     const hunkMatch = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
-    if (hunkMatch && currentFile) {
+    if (hunkMatch) {
+      if (!currentFile) {
+        currentFile = { path: 'unknown', hunks: [] };
+      }
       currentHunk = {
         oldStart: parseInt(hunkMatch[1], 10),
         oldLines: hunkMatch[2] ? parseInt(hunkMatch[2], 10) : 1,
