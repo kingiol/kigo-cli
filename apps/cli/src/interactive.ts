@@ -11,6 +11,22 @@ import { getConfigManager } from './config/ConfigManager.js';
 import { registry, SkillLoader } from '@koder/tools';
 import { MCPManager } from '@koder/mcp';
 
+// Simple markdown renderer for streaming text
+function renderMarkdownChunk(text: string): string {
+  let rendered = text;
+
+  // Inline code
+  rendered = rendered.replace(/`([^`]+)`/g, (_, code) => chalk.cyan(`\`${code}\``));
+
+  // Bold
+  rendered = rendered.replace(/\*\*([^*]+)\*\*/g, (_, text) => chalk.bold(text));
+
+  // Italic
+  rendered = rendered.replace(/\*([^*]+)\*/g, (_, text) => chalk.italic(text));
+
+  return rendered;
+}
+
 // System prompt
 const KODER_SYSTEM_PROMPT = `You are Koder, an advanced AI coding assistant and interactive CLI tool.
 
@@ -189,14 +205,32 @@ export async function runInteractive(
         display.handleEvent(event);
 
         if (options.stream !== false) {
-          // Render current state
-          process.stdout.write('\x1b[2K\r'); // Clear line
-          process.stdout.write(display.render());
+          // For text deltas, print immediately for typewriter effect
+          if (event.type === 'text_delta') {
+            process.stdout.write(renderMarkdownChunk(event.data));
+          } else if (event.type === 'tool_call') {
+            // Show tool calls
+            process.stdout.write(`\n${chalk.gray('▶')} ${chalk.cyan(event.data.name || 'tool')}\n`);
+          } else if (event.type === 'tool_output') {
+            // Show tool output
+            const output = event.data.error
+              ? chalk.red(`Error: ${event.data.error}`)
+              : String(event.data.result || '').substring(0, 500);
+            process.stdout.write(`${chalk.dim(output)}\n`);
+          } else if (event.type === 'error') {
+            // Show errors
+            process.stdout.write(chalk.red(`\nError: ${event.data}\n`));
+          }
         }
       }
 
-      // Final render
-      console.log('\n' + display.render());
+      // Final newline
+      if (options.stream !== false) {
+        console.log();
+      } else {
+        // Non-streaming mode: show full render at the end
+        console.log(display.render());
+      }
 
       // Save assistant messages
       const messages = agent.getMessages();
