@@ -13,7 +13,7 @@ import { mcpCommands } from './commands/mcp.js';
 const program = new Command();
 
 program
-  .name('koder')
+  .name('kigo')
   .description('AI coding assistant for the terminal')
   .version('0.1.0');
 

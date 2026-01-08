@@ -29,16 +29,16 @@ importers:
 
   apps/cli:
     dependencies:
-      '@koder/auth':
+      '@kigo/auth':
         specifier: workspace:*
         version: link:../../packages/auth
-      '@koder/core':
+      '@kigo/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@koder/mcp':
+      '@kigo/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
-      '@koder/tools':
+      '@kigo/tools':
         specifier: workspace:*
         version: link:../../packages/tools
       better-sqlite3:
@@ -93,7 +93,7 @@ importers:
 
   packages/auth:
     dependencies:
-      '@koder/core':
+      '@kigo/core':
         specifier: workspace:*
         version: link:../core
       axios:
@@ -140,7 +140,7 @@ importers:
 
   packages/mcp:
     dependencies:
-      '@koder/core':
+      '@kigo/core':
         specifier: workspace:*
         version: link:../core
       eventsource:
@@ -159,7 +159,7 @@ importers:
 
   packages/tools:
     dependencies:
-      '@koder/core':
+      '@kigo/core':
         specifier: workspace:*
         version: link:../core
       axios:

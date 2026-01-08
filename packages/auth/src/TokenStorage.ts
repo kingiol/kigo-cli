@@ -16,7 +16,7 @@ export interface OAuthTokens {
   modelsFetchedAt?: number;
 }
 
-const TOKENS_DIR = path.join(os.homedir(), '.koder', 'tokens');
+const TOKENS_DIR = path.join(os.homedir(), '.kigo', 'tokens');
 const TOKEN_EXPIRY_BUFFER_MS = 60 * 1000; // 1 minute buffer
 
 export class TokenStorage {

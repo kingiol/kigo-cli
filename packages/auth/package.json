@@ -1,5 +1,5 @@
 {
-  "name": "@koder/auth",
+  "name": "@kigo/auth",
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -24,7 +24,7 @@
     "lint": "eslint src/**/*.ts"
   },
   "dependencies": {
-    "@koder/core": "workspace:*",
+    "@kigo/core": "workspace:*",
     "axios": "^1.6.5",
     "express": "^4.18.2",
     "open": "^8.4.2"

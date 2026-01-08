@@ -1,5 +1,5 @@
 {
-  "name": "@koder/tools",
+  "name": "@kigo/tools",
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -24,7 +24,7 @@
     "lint": "eslint src/**/*.ts"
   },
   "dependencies": {
-    "@koder/core": "workspace:*",
+    "@kigo/core": "workspace:*",
     "axios": "^1.6.5",
     "cheerio": "^1.0.0-rc.12",
     "fast-glob": "^3.3.2",

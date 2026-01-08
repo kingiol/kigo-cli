@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Koder CLI - Main executable
+ * Kigo CLI - Main executable
  */
 
 import '../dist/index.cjs';

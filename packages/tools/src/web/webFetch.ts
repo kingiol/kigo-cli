@@ -24,7 +24,7 @@ tool({
         maxContentLength: 10 * 1024 * 1024, // 10MB
         headers: {
           'User-Agent':
-            'Mozilla/5.0 (compatible; Koder/1.0; +https://github.com/anthropics/koder)',
+            'Mozilla/5.0 (compatible; Kigo/1.0; +https://github.com/dingxiaokang/kigo)',
         },
       });
 

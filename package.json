@@ -1,7 +1,7 @@
 {
-  "name": "koder-node",
+  "name": "kigo-node",
   "version": "0.1.0",
-  "description": "AI coding assistant for the terminal - Node.js port of Koder",
+  "description": "AI coding assistant for the terminal - Node.js port of Kigo",
   "type": "module",
   "private": true,
   "workspaces": [
@@ -13,7 +13,7 @@
     "test": "turbo run test",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,js,md,json}\"",
-    "dev": "pnpm --filter @koder/cli dev"
+    "dev": "pnpm --filter @kigo/cli dev"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

@@ -1,18 +1,18 @@
 # 待实现功能清单
 
-> Koder Node.js 相对于 Claude Code 尚未实现的功能
+> Kigo Node.js 相对于 Claude Code 尚未实现的功能
 
 ---
 
 ## 概述
 
-本文档记录了 Koder Node.js 项目相对于 Claude Code 尚未实现的核心功能，供后期规划和开发参考。
+本文档记录了 Kigo Node.js 项目相对于 Claude Code 尚未实现的核心功能，供后期规划和开发参考。
 
 ---
 
 ## 功能对比总览
 
-| 功能 | Claude Code | Koder Node.js | 优先级 |
+| 功能 | Claude Code | Kigo Node.js | 优先级 |
 |------|-------------|---------------|--------|
 | 代理系统（Task） | ✅ | ❌ | 高 |
 | 计划模式 | ✅ | ❌ | 高 |

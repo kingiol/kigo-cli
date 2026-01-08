@@ -1,5 +1,5 @@
 /**
- * Core types for Koder Node.js
+ * Core types for Kigo Node.js
  */
 
 export interface Tool {

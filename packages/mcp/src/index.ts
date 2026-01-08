@@ -1,5 +1,5 @@
 /**
- * @koder/mcp - MCP (Model Context Protocol) client for Koder Node.js
+ * @kigo/mcp - MCP (Model Context Protocol) client for Kigo Node.js
  */
 
 export * from './types.js';

@@ -15,7 +15,7 @@ interface TodoItem {
   priority: string;
 }
 
-const TODO_FILE = path.join(os.homedir(), '.koder', 'todos.json');
+const TODO_FILE = path.join(os.homedir(), '.kigo', 'todos.json');
 
 async function ensureTodoDir(): Promise<void> {
   await fs.mkdir(path.dirname(TODO_FILE), { recursive: true });

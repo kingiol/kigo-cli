@@ -3,7 +3,7 @@
  */
 
 import { Command } from "commander";
-import { TokenStorage, GoogleProvider } from "@koder/auth";
+import { TokenStorage, GoogleProvider } from "@kigo/auth";
 
 export function authCommands(program: Command): void {
   const authCmd = program

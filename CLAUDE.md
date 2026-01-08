@@ -1,10 +1,10 @@
 # Claude Integration Guide
 
-> Using Anthropic's Claude models with Koder
+> Using Anthropic's Claude models with Kigo
 
 ## Overview
 
-Koder supports Claude models through the Anthropic API, providing access to Claude's powerful reasoning and coding capabilities. This guide covers setup, configuration, and best practices for using Claude with Koder.
+Kigo supports Claude models through the Anthropic API, providing access to Claude's powerful reasoning and coding capabilities. This guide covers setup, configuration, and best practices for using Claude with Kigo.
 
 ## Supported Models
 
@@ -33,24 +33,24 @@ export ANTHROPIC_API_KEY="sk-ant-api03-..."
 export KODER_MODEL="claude-opus-4-20250514"
 ```
 
-### 3. Run Koder with Claude
+### 3. Run Kigo with Claude
 
 ```bash
 # Use default Claude model
-koder
+kigo
 
 # Specify a specific Claude model
-KODER_MODEL="claude-sonnet-4-20250514" koder
+KODER_MODEL="claude-sonnet-4-20250514" kigo
 
 # Interactive session with Claude
-koder -s my-project "help me refactor this code"
+kigo -s my-project "help me refactor this code"
 ```
 
 ## Configuration
 
 ### Via Config File
 
-Edit `~/.koder/config.yaml`:
+Edit `~/.kigo/config.yaml`:
 
 ```yaml
 model:
@@ -79,7 +79,7 @@ export ANTHROPIC_BASE_URL="https://api.anthropic.com"
 ### Via CLI Arguments
 
 ```bash
-koder --model claude-opus-4-20250514 "your prompt"
+kigo --model claude-opus-4-20250514 "your prompt"
 ```
 
 ## Features
@@ -89,7 +89,7 @@ koder --model claude-opus-4-20250514 "your prompt"
 Claude supports real-time streaming for immediate feedback:
 
 ```typescript
-// Enabled by default in Koder
+// Enabled by default in Kigo
 const response = await provider.chat({
   messages: [...],
   stream: true,
@@ -102,10 +102,10 @@ for await (const chunk of response) {
 
 ### Tool Use
 
-Claude excels at using tools. All Koder built-in tools work seamlessly:
+Claude excels at using tools. All Kigo built-in tools work seamlessly:
 
 ```bash
-koder "create a new React component with tests"
+kigo "create a new React component with tests"
 ```
 
 Claude will automatically:
@@ -148,11 +148,11 @@ Claude responds well to structured prompts:
 
 ```bash
 # Good: Clear, specific request
-koder "Refactor the UserService class to use dependency injection. 
+kigo "Refactor the UserService class to use dependency injection. 
 Extract the database logic into a separate repository pattern."
 
 # Better: Include context and constraints
-koder "Refactor UserService to use dependency injection:
+kigo "Refactor UserService to use dependency injection:
 1. Create IUserRepository interface
 2. Extract DB logic to UserRepository class
 3. Update tests to use mocks
@@ -165,13 +165,13 @@ Use named sessions for complex projects:
 
 ```bash
 # Start a session
-koder -s backend-refactor "analyze the current architecture"
+kigo -s backend-refactor "analyze the current architecture"
 
 # Continue the session (maintains context)
-koder -s backend-refactor "implement the repository pattern"
+kigo -s backend-refactor "implement the repository pattern"
 
 # Later...
-koder -s backend-refactor "update the tests"
+kigo -s backend-refactor "update the tests"
 ```
 
 ## Advanced Usage
@@ -181,8 +181,8 @@ koder -s backend-refactor "update the tests"
 Modify the system prompt for specialized behavior:
 
 ```typescript
-import { Agent } from '@koder/core';
-import { AnthropicProvider } from '@koder/core/models';
+import { Agent } from '@kigo/core';
+import { AnthropicProvider } from '@kigo/core/models';
 
 const provider = new AnthropicProvider({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -220,10 +220,10 @@ Monitor token usage:
 
 ```bash
 # Use Haiku for simple tasks
-KODER_MODEL="claude-3-5-haiku-20241022" koder "fix typo in README"
+KODER_MODEL="claude-3-5-haiku-20241022" kigo "fix typo in README"
 
 # Use Opus only when needed
-KODER_MODEL="claude-opus-4-20250514" koder "design the entire system architecture"
+KODER_MODEL="claude-opus-4-20250514" kigo "design the entire system architecture"
 ```
 
 ## Troubleshooting
@@ -252,10 +252,10 @@ Ensure you're using a valid model name:
 
 ```bash
 # Check available models in config
-koder config show
+kigo config show
 
 # Update to valid model
-koder config set model.name "claude-opus-4-20250514"
+kigo config set model.name "claude-opus-4-20250514"
 ```
 
 ### Streaming Issues
@@ -264,7 +264,7 @@ If streaming fails, check your network:
 
 ```bash
 # Disable streaming temporarily
-koder --no-stream "your prompt"
+kigo --no-stream "your prompt"
 ```
 
 ## Provider Implementation
@@ -312,7 +312,7 @@ Key features:
 ### Create a Full-Stack Feature
 
 ```bash
-koder -s feature "Create a user authentication system:
+kigo -s feature "Create a user authentication system:
 - JWT-based auth
 - Login/register endpoints
 - Password hashing with bcrypt
@@ -323,7 +323,7 @@ koder -s feature "Create a user authentication system:
 ### Refactor Legacy Code
 
 ```bash
-koder -s refactor "Analyze the legacy UserController and:
+kigo -s refactor "Analyze the legacy UserController and:
 1. Identify code smells
 2. Suggest modern patterns
 3. Implement the refactoring
@@ -334,7 +334,7 @@ koder -s refactor "Analyze the legacy UserController and:
 ### Debug Complex Issues
 
 ```bash
-koder "The authentication middleware is failing intermittently.
+kigo "The authentication middleware is failing intermittently.
 Analyze the code, check for race conditions, and fix the issue."
 ```
 

@@ -1,5 +1,5 @@
 /**
- * @koder/tools - Built-in tools for Koder Node.js
+ * @kigo/tools - Built-in tools for Kigo Node.js
  */
 
 export * from './registry.js';

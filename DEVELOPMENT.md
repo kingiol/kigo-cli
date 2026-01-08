@@ -3,7 +3,7 @@
 ## Project Structure
 
 ```
-koder-node/
+kigo-node/
 ├── packages/
 │   ├── core/                 # Core framework
 │   │   ├── src/
@@ -51,7 +51,7 @@ koder-node/
 pnpm build
 
 # Build specific package
-pnpm --filter @koder/core build
+pnpm --filter @kigo/core build
 ```
 
 ## Testing
@@ -61,7 +61,7 @@ pnpm --filter @koder/core build
 pnpm test
 
 # Run tests for specific package
-pnpm --filter @koder/tools test
+pnpm --filter @kigo/tools test
 ```
 
 ## Adding a New Tool

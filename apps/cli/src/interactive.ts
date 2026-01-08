@@ -4,12 +4,12 @@
 
 import * as readline from 'node:readline';
 import chalk from 'chalk';
-import { Agent, AgentScheduler, Session, ProviderFactory } from '@koder/core';
+import { Agent, AgentScheduler, Session, ProviderFactory } from '@kigo/core';
 import { StreamingDisplayManager } from './display/StreamingDisplay.js';
 import { StatusLine, type SessionUsage } from './display/StatusLine.js';
 import { getConfigManager } from './config/ConfigManager.js';
-import { registry, SkillLoader } from '@koder/tools';
-import { MCPManager } from '@koder/mcp';
+import { registry, SkillLoader } from '@kigo/tools';
+import { MCPManager } from '@kigo/mcp';
 import { ToolRenderer } from './display/ToolRenderer.js';
 
 // Simple markdown renderer for streaming text
@@ -30,7 +30,7 @@ function renderMarkdownChunk(text: string): string {
 
 // System prompt
 // System prompt
-const KODER_SYSTEM_TEMPLATE = `You are Koder, an advanced AI coding assistant and interactive CLI tool.
+const KODER_SYSTEM_TEMPLATE = `You are Kigo, an advanced AI coding assistant and interactive CLI tool.
 
 You are an interactive CLI tool that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.
 
@@ -83,7 +83,7 @@ You MUST use the 'todo_write' tool to plan and track your complex tasks.
 2. Execute the first step.
 3. Use 'todo_write' to mark the item as 'completed' or 'in_progress'.
 4. Repeat.
-THIS IS MANDATORY. You must visualize the plan for the user for mult-step tasks.
+5. THIS IS MANDATORY. You must visualize the plan for the user for mult-step tasks.
 
 # Skills (Progressive Disclosure)
 You have access to specialized skills that provide expert guidance for specific tasks. Skills are loaded on-demand using the get_skill tool.
@@ -310,7 +310,7 @@ ${chalk.bold('Available commands:')}
   /help     - Show this help
   /clear    - Clear conversation history
   /status   - Show session status
-  /exit     - Exit Koder
+  /exit     - Exit Kigo
   /config   - Show configuration
   /session  - Show session info
 `);
@@ -371,7 +371,7 @@ ${sessions.map((s: { title: string | null; id: string; updatedAt: number | strin
   }
 
   // Welcome message
-  console.log(chalk.cyan.bold('Koder v0.1.0'));
+  console.log(chalk.cyan.bold('Kigo v0.1.0'));
   console.log(chalk.dim('AI coding assistant for the terminal'));
   console.log(chalk.dim('Type /help for available commands\n'));
 

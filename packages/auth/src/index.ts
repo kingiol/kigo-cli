@@ -1,5 +1,5 @@
 /**
- * @koder/auth - OAuth authentication for Koder Node.js
+ * @kigo/auth - OAuth authentication for Kigo Node.js
  */
 
 export * from './PKCE.js';

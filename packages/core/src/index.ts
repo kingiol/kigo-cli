@@ -1,5 +1,5 @@
 /**
- * @koder/core - Core framework for Koder Node.js
+ * @kigo/core - Core framework for Kigo Node.js
  */
 
 export * from './types.js';

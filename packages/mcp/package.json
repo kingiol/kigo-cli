@@ -1,5 +1,5 @@
 {
-  "name": "@koder/mcp",
+  "name": "@kigo/mcp",
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -20,7 +20,7 @@
     "lint": "eslint src/**/*.ts"
   },
   "dependencies": {
-    "@koder/core": "workspace:*",
+    "@kigo/core": "workspace:*",
     "eventsource": "^2.0.2",
     "zod": "^3.22.4"
   },

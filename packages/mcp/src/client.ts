@@ -58,7 +58,7 @@ export class MCPClient {
       protocolVersion: '2024-11-05',
       capabilities: {},
       clientInfo: {
-        name: 'koder-node',
+        name: 'kigo-node',
         version: '0.1.0',
       },
     });
