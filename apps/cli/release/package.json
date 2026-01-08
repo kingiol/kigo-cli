@@ -1,12 +1,12 @@
 {
-  "name": "koder-cli-release",
+  "name": "kigo-cli-release",
   "version": "0.1.0",
-  "description": "Standalone Koder CLI",
+  "description": "Standalone Kigo CLI",
   "bin": {
-    "koder": "./koder.js"
+    "kigo": "./kigo.js"
   },
   "scripts": {
-    "start": "node koder.js"
+    "start": "node kigo.js"
   },
   "dependencies": {
     "better-sqlite3": "^12.5.0"

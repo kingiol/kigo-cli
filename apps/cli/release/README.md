@@ -1,4 +1,4 @@
-# Koder CLI Release
+# Kigo CLI Release
 
 ## Installation
 
@@ -11,7 +11,7 @@
 Run the CLI using node:
 
 ```bash
-node koder.js --help
+node kigo.js --help
 ```
 
 Or use the npm script:

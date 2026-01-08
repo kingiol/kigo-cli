@@ -1,5 +1,5 @@
 /**
- * Configuration manager for loading and managing Koder configuration
+ * Configuration manager for loading and managing Kigo configuration
  */
 
 import * as fs from 'node:fs/promises';
@@ -7,24 +7,24 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import * as yaml from 'js-yaml';
 import {
-  KoderConfigSchema,
+  KigoConfigSchema,
   DEFAULT_CONFIG,
-  type KoderConfig,
+  type KigoConfig,
   type MCPServerConfig,
 } from './configSchema.js';
 
-const DEFAULT_CONFIG_PATH = path.join(os.homedir(), '.koder', 'config.yaml');
+const DEFAULT_CONFIG_PATH = path.join(os.homedir(), '.kigo', 'config.yaml');
 
 export class ConfigManager {
   private configPath: string;
-  private config: KoderConfig | null = null;
+  private config: KigoConfig | null = null;
   private lastModified: number = 0;
 
   constructor(configPath?: string) {
     this.configPath = configPath || DEFAULT_CONFIG_PATH;
   }
 
-  async load(): Promise<KoderConfig> {
+  async load(): Promise<KigoConfig> {
     try {
       const stat = await fs.stat(this.configPath);
       if (stat.mtimeMs > this.lastModified || !this.config) {
@@ -44,7 +44,7 @@ export class ConfigManager {
     try {
       const content = await fs.readFile(this.configPath, 'utf-8');
       const parsed = yaml.load(content) as any;
-      this.config = KoderConfigSchema.parse(parsed);
+      this.config = KigoConfigSchema.parse(parsed);
       this.lastModified = (await fs.stat(this.configPath)).mtimeMs;
     } catch (error) {
       if ((error as any).code !== 'ENOENT') {
@@ -54,12 +54,12 @@ export class ConfigManager {
     }
   }
 
-  async save(config: KoderConfig): Promise<void> {
+  async save(config: KigoConfig): Promise<void> {
     const dir = path.dirname(this.configPath);
     await fs.mkdir(dir, { recursive: true });
 
     // Validate before saving
-    const validated = KoderConfigSchema.parse(config);
+    const validated = KigoConfigSchema.parse(config);
 
     const content = yaml.dump(validated, { indent: 2, lineWidth: 120 });
     await fs.writeFile(this.configPath, content, 'utf-8');
@@ -68,7 +68,7 @@ export class ConfigManager {
     this.lastModified = Date.now();
   }
 
-  get<K extends keyof KoderConfig>(key: K): KoderConfig[K] {
+  get<K extends keyof KigoConfig>(key: K): KigoConfig[K] {
     if (!this.config) {
       throw new Error('Config not loaded. Call load() first.');
     }
@@ -91,7 +91,7 @@ export class ConfigManager {
   }
 
   getModelName(cliModel?: string): string {
-    const envModel = process.env.KODER_MODEL;
+    const envModel = process.env.KIGO_MODEL;
     return cliModel || envModel || this.config?.model.name || 'gpt-4o';
   }
 
@@ -167,7 +167,7 @@ export class ConfigManager {
   }
 
   getReasoningEffort(): string | undefined {
-    const envEffort = process.env.KODER_REASONING_EFFORT;
+    const envEffort = process.env.KIGO_REASONING_EFFORT;
     return envEffort || this.config?.model.reasoningEffort;
   }
 

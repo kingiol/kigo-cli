@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Koder Node.js will be documented in this file.
+All notable changes to Kigo Node.js will be documented in this file.
 
 ## [0.1.0] - 2024-01-06
 

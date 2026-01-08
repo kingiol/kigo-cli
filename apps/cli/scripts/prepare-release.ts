@@ -23,7 +23,7 @@ fs.mkdirSync(RELEASE_DIR);
 
 // 1. Copy Bundle
 console.log('Copying bundled file...');
-fs.copyFileSync(DIST_FILE, path.join(RELEASE_DIR, 'koder.js'));
+fs.copyFileSync(DIST_FILE, path.join(RELEASE_DIR, 'kigo.js'));
 
 // 2. Create package.json
 console.log('Creating minimal package.json...');
@@ -35,14 +35,14 @@ const nativeDeps = {
 };
 
 const releasePkg = {
-    name: 'koder-cli-release',
+    name: 'kigo-cli-release',
     version: mainPkg.version,
-    description: 'Standalone Koder CLI',
+    description: 'Standalone Kigo CLI',
     bin: {
-        koder: './koder.js'
+        kigo: './kigo.js'
     },
     scripts: {
-        start: 'node koder.js'
+        start: 'node kigo.js'
     },
     dependencies: nativeDeps,
     engines: mainPkg.engines
@@ -55,7 +55,7 @@ fs.writeFileSync(
 
 // 3. Create README
 console.log('Creating README.md...');
-const readmeContent = `# Koder CLI Release
+const readmeContent = `# Kigo CLI Release
 
 ## Installation
 
@@ -68,7 +68,7 @@ const readmeContent = `# Koder CLI Release
 Run the CLI using node:
 
 \`\`\`bash
-node koder.js --help
+node kigo.js --help
 \`\`\`
 
 Or use the npm script:
@@ -86,5 +86,5 @@ console.log(`
 To verify:
   cd ${RELEASE_DIR}
   npm install
-  node koder.js --help
+  node kigo.js --help
 `);

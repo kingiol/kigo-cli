@@ -39,12 +39,12 @@ export const MCPServerConfigSchema = z.object({
 // Skills configuration
 export const SkillsConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  projectSkillsDir: z.string().default('.koder/skills'),
-  userSkillsDir: z.string().default('~/.koder/skills'),
+  projectSkillsDir: z.string().default('.kigo/skills'),
+  userSkillsDir: z.string().default('~/.kigo/skills'),
 });
 
-// Main Koder configuration
-export const KoderConfigSchema = z.object({
+// Main Kigo configuration
+export const KigoConfigSchema = z.object({
   model: ModelConfigSchema,
   cli: CLIConfigSchema,
   mcpServers: z.array(MCPServerConfigSchema).default([]),
@@ -56,10 +56,10 @@ export type ModelConfig = z.infer<typeof ModelConfigSchema>;
 export type CLIConfig = z.infer<typeof CLIConfigSchema>;
 export type MCPServerConfig = z.infer<typeof MCPServerConfigSchema>;
 export type SkillsConfig = z.infer<typeof SkillsConfigSchema>;
-export type KoderConfig = z.infer<typeof KoderConfigSchema>;
+export type KigoConfig = z.infer<typeof KigoConfigSchema>;
 
 // Default configuration
-export const DEFAULT_CONFIG: KoderConfig = {
+export const DEFAULT_CONFIG: KigoConfig = {
   model: {
     name: 'gpt-4o',
     provider: 'openai',
@@ -70,7 +70,7 @@ export const DEFAULT_CONFIG: KoderConfig = {
   mcpServers: [],
   skills: {
     enabled: true,
-    projectSkillsDir: '.koder/skills',
-    userSkillsDir: '~/.koder/skills',
+    projectSkillsDir: '.kigo/skills',
+    userSkillsDir: '~/.kigo/skills',
   },
 };

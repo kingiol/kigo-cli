@@ -16,7 +16,7 @@ export interface SessionMetadata {
   messageCount: number;
 }
 
-const DEFAULT_DB_PATH = path.join(os.homedir(), '.kigo', 'koder.db');
+const DEFAULT_DB_PATH = path.join(os.homedir(), '.kigo', 'kigo.db');
 
 export class Session {
   private db: Database.Database;

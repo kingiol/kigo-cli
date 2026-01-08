@@ -49,8 +49,8 @@ export function configCommands(program: Command): void {
         mcpServers: [],
         skills: {
           enabled: true,
-          projectSkillsDir: ".koder/skills",
-          userSkillsDir: "~/.koder/skills",
+          projectSkillsDir: ".kigo/skills",
+          userSkillsDir: "~/.kigo/skills",
         },
       });
       console.log("Config initialized at:", manager.getPath());
