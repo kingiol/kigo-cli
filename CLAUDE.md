@@ -30,7 +30,7 @@ Kigo supports Claude models through the Anthropic API, providing access to Claud
 export ANTHROPIC_API_KEY="sk-ant-api03-..."
 
 # Optional: Set default model
-export KODER_MODEL="claude-opus-4-20250514"
+export KIGO_MODEL="claude-opus-4-20250514"
 ```
 
 ### 3. Run Kigo with Claude
@@ -40,7 +40,7 @@ export KODER_MODEL="claude-opus-4-20250514"
 kigo
 
 # Specify a specific Claude model
-KODER_MODEL="claude-sonnet-4-20250514" kigo
+KIGO_MODEL="claude-sonnet-4-20250514" kigo
 
 # Interactive session with Claude
 kigo -s my-project "help me refactor this code"
@@ -67,7 +67,7 @@ cli:
 
 ```bash
 # Model selection
-export KODER_MODEL="claude-opus-4-20250514"
+export KIGO_MODEL="claude-opus-4-20250514"
 
 # API key
 export ANTHROPIC_API_KEY="sk-ant-api03-..."
@@ -220,10 +220,10 @@ Monitor token usage:
 
 ```bash
 # Use Haiku for simple tasks
-KODER_MODEL="claude-3-5-haiku-20241022" kigo "fix typo in README"
+KIGO_MODEL="claude-3-5-haiku-20241022" kigo "fix typo in README"
 
 # Use Opus only when needed
-KODER_MODEL="claude-opus-4-20250514" kigo "design the entire system architecture"
+KIGO_MODEL="claude-opus-4-20250514" kigo "design the entire system architecture"
 ```
 
 ## Troubleshooting

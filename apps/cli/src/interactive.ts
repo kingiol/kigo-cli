@@ -30,7 +30,7 @@ function renderMarkdownChunk(text: string): string {
 
 // System prompt
 // System prompt
-const KODER_SYSTEM_TEMPLATE = `You are Kigo, an advanced AI coding assistant and interactive CLI tool.
+const KIGO_SYSTEM_TEMPLATE = `You are Kigo, an advanced AI coding assistant and interactive CLI tool.
 
 You are an interactive CLI tool that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.
 
@@ -121,7 +121,7 @@ export async function runInteractive(
 
   // Build system prompt with MCP tools info
   const builtinTools = registry.getNames().join(', ');
-  let systemPrompt = KODER_SYSTEM_TEMPLATE
+  let systemPrompt = KIGO_SYSTEM_TEMPLATE
     .replace('{BUILTIN_TOOLS}', builtinTools)
     .replace('{SKILLS_METADATA}', skillsPrompt);
 

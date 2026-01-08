@@ -53,7 +53,7 @@ kigo "create a Python function to calculate fibonacci numbers"
 kigo -s my-project "help me implement a new feature"
 
 # Use a different model
-KODER_MODEL="claude-opus-4-20250514" kigo "your prompt"
+KIGO_MODEL="claude-opus-4-20250514" kigo "your prompt"
 ```
 
 ## Configuration
@@ -61,7 +61,7 @@ KODER_MODEL="claude-opus-4-20250514" kigo "your prompt"
 Kigo can be configured via (in priority order):
 
 1. **CLI arguments** - Highest priority
-2. **Environment variables** - `KODER_MODEL`, `KODER_REASONING_EFFORT`
+2. **Environment variables** - `KIGO_MODEL`, `KIGO_REASONING_EFFORT`
 3. **Config file** - `~/.kigo/config.yaml`
 
 ### Config File Example
