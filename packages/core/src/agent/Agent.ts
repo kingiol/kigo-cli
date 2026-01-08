@@ -76,11 +76,22 @@ export class Agent {
         // Handle tool calls
         if (chunk.delta?.tool_calls) {
           for (const call of chunk.delta.tool_calls) {
-            const existing = currentToolCalls.find(c => c.id === call.id);
+            let existing;
+            // Use index if available (OpenAI), otherwise fallback to ID (Anthropic/Single chunk)
+            if (call.index !== undefined) {
+              existing = currentToolCalls.find(c => c.index === call.index);
+            } else {
+              existing = currentToolCalls.find(c => c.id === call.id);
+            }
+
             if (existing) {
               existing.arguments += call.arguments || '';
+              // Ensure we capture ID/Name if they come in later chunks (unlikely but safe)
+              if (call.id && !existing.id) existing.id = call.id;
+              if (call.name && !existing.name) existing.name = call.name;
             } else {
               currentToolCalls.push({
+                index: call.index,
                 id: call.id,
                 name: call.name,
                 arguments: call.arguments || '',

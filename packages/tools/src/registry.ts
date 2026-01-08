@@ -5,10 +5,12 @@
 import { z } from 'zod';
 import { SecurityGuard } from './security.js';
 
+import { zodToJsonSchema } from 'zod-to-json-schema';
+
 export interface Tool {
   name: string;
   description: string;
-  parameters: any; // Zod schema
+  parameters: any; // JSON schema
   execute: (params: any) => Promise<string>;
 }
 
@@ -28,7 +30,7 @@ export class ToolRegistry {
     const tool: Tool = {
       name: definition.name,
       description: definition.description,
-      parameters: definition.schema,
+      parameters: zodToJsonSchema(definition.schema),
       execute: async (params: any) => {
         // Validate parameters
         const validated = definition.schema.parse(params);
@@ -98,6 +100,11 @@ export const registry = new ToolRegistry();
 
 // Decorator factory for registering tools
 export function tool<T extends z.ZodType>(definition: ToolDefinition<T>) {
+  // Allow direct registration if execute is provided
+  if (typeof definition.execute === 'function') {
+    registry.register(definition);
+  }
+
   return function (_target: any, _propertyKey: string, descriptor: PropertyDescriptor) {
     registry.register({
       ...definition,
@@ -117,7 +124,7 @@ export function createTool<T extends z.ZodType>(
   const tool: Tool = {
     name,
     description,
-    parameters: schema,
+    parameters: zodToJsonSchema(schema),
     execute: async (params: any) => {
       const validated = schema.parse(params);
       const result = await execute(validated);

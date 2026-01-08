@@ -10,6 +10,7 @@ import { StatusLine, type SessionUsage } from './display/StatusLine.js';
 import { getConfigManager } from './config/ConfigManager.js';
 import { registry, SkillLoader } from '@koder/tools';
 import { MCPManager } from '@koder/mcp';
+import { ToolRenderer } from './display/ToolRenderer.js';
 
 // Simple markdown renderer for streaming text
 function renderMarkdownChunk(text: string): string {
@@ -28,7 +29,8 @@ function renderMarkdownChunk(text: string): string {
 }
 
 // System prompt
-const KODER_SYSTEM_PROMPT = `You are Koder, an advanced AI coding assistant and interactive CLI tool.
+// System prompt
+const KODER_SYSTEM_TEMPLATE = `You are Koder, an advanced AI coding assistant and interactive CLI tool.
 
 You are an interactive CLI tool that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.
 
@@ -38,22 +40,55 @@ IMPORTANT: Assist with defensive security tasks only. Refuse to create, modify, 
 You should be concise, direct, and to the point. Your output will be displayed on a command line interface using Github-flavored markdown.
 - When running non-trivial or system-modifying commands, briefly explain what the command does and why
 - Avoid unnecessary preamble or postamble - get straight to the point
-- Output text to communicate; never use tools like run_shell or code comments to communicate
+- Output text to communicate with the user; use tools to perform actions
 - If you cannot help, offer alternatives briefly
 
-# Tool availability
+# Tool usage policy
 The following built-in tools are available:
-${registry.getNames().join(', ')}
+{BUILTIN_TOOLS}
 
 {MCP_TOOLS_INFO}
+
+# CRITICAL: Using Tools to Perform Actions
+**ALWAYS use the appropriate tools to actually perform tasks. DO NOT just show commands in code blocks.**
+
+Examples:
+- To create/modify files: Use write_file or edit_file tools
+- To run commands: Use run_shell tool
+- To read files: Use read_file tool
+- To search: Use glob_search or grep_search tools
+
+When the user asks you to create files or run commands, you MUST call the corresponding tools.
+DO NOT output bash/shell commands, file content, or JSON data in markdown code blocks as a substitute for using tools.
+If you output a code block for a file without calling write_file, you have FAILED. Use the tools!
+
+# Examples of CORRECT behavior
+User: "Create a todo list website"
+Assistant: (Calls tool 'todo_write' with args { "todos": [...] })
+Assistant: I have initialized the task list. Now I will create the files.
+Assistant: (Calls tool 'write_file' with args { "path": "index.html", "content": "..." })
+
+# Examples of INCORRECT behavior (FAILURE)
+User: "Create a todo list website"
+Assistant: \`\`\`json
+{ "todos": [...] }
+\`\`\`
+Assistant: \`\`\`html
+  < !DOCTYPE html >...
+\`\`\`
+
+# Task Management Workflow (MANDATORY)
+You MUST use the 'todo_write' tool to plan and track your complex tasks.
+1. When receiving a complex request, first use 'todo_write' to create a plan with 'pending' status.
+2. Execute the first step.
+3. Use 'todo_write' to mark the item as 'completed' or 'in_progress'.
+4. Repeat.
+THIS IS MANDATORY. You must visualize the plan for the user for mult-step tasks.
 
 # Skills (Progressive Disclosure)
 You have access to specialized skills that provide expert guidance for specific tasks. Skills are loaded on-demand using the get_skill tool.
 
 {SKILLS_METADATA}
-
-# Task Management
-Use the todo_read and todo_write tools proactively to plan and track tasks.
 
 # Doing tasks
 The user will primarily request you perform software engineering tasks. This includes solving bugs, adding new functionality, refactoring code, explaining code, and more.
@@ -85,7 +120,10 @@ export async function runInteractive(
       : 'No skills available.';
 
   // Build system prompt with MCP tools info
-  let systemPrompt = KODER_SYSTEM_PROMPT.replace('{SKILLS_METADATA}', skillsPrompt);
+  const builtinTools = registry.getNames().join(', ');
+  let systemPrompt = KODER_SYSTEM_TEMPLATE
+    .replace('{BUILTIN_TOOLS}', builtinTools)
+    .replace('{SKILLS_METADATA}', skillsPrompt);
 
   // Initialize MCP tools
   const mcpManager = new MCPManager();
@@ -201,6 +239,7 @@ export async function runInteractive(
     console.log();
 
     try {
+      const toolCallNameMap = new Map<string, string>();
       for await (const event of scheduler.run(input)) {
         display.handleEvent(event);
 
@@ -209,14 +248,25 @@ export async function runInteractive(
           if (event.type === 'text_delta') {
             process.stdout.write(renderMarkdownChunk(event.data));
           } else if (event.type === 'tool_call') {
+            // Track tool name for output rendering
+            toolCallNameMap.set(event.data.id, event.data.name);
+
             // Show tool calls
-            process.stdout.write(`\n${chalk.gray('▶')} ${chalk.cyan(event.data.name || 'tool')}\n`);
+            let args = {};
+            try {
+              args = JSON.parse(event.data.arguments || '{}');
+            } catch (e) {
+              args = { raw: event.data.arguments };
+            }
+            process.stdout.write(ToolRenderer.renderToolCall(event.data.name, args));
           } else if (event.type === 'tool_output') {
             // Show tool output
-            const output = event.data.error
-              ? chalk.red(`Error: ${event.data.error}`)
-              : String(event.data.result || '').substring(0, 500);
-            process.stdout.write(`${chalk.dim(output)}\n`);
+            const name = toolCallNameMap.get(event.data.id) || 'tool';
+            if (event.data.error) {
+              process.stdout.write(chalk.red(`Error: ${event.data.error}\n`));
+            } else {
+              process.stdout.write(ToolRenderer.renderToolOutput(name, event.data.result));
+            }
           } else if (event.type === 'error') {
             // Show errors
             process.stdout.write(chalk.red(`\nError: ${event.data}\n`));

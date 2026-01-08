@@ -48,6 +48,7 @@ export class OpenAIProvider extends BaseProvider {
           content: delta?.content ?? undefined,
           tool_calls: delta?.tool_calls?.map((tc: OpenAI.Chat.Completions.ChatCompletionChunk.Choice.Delta.ToolCall) => ({
             id: tc.id,
+            index: tc.index,
             name: tc.function?.name,
             arguments: tc.function?.arguments ?? undefined,
           })),
@@ -55,10 +56,10 @@ export class OpenAIProvider extends BaseProvider {
         finish_reason: chunk.choices[0]?.finish_reason ?? undefined,
         usage: chunk.usage
           ? {
-              inputTokens: chunk.usage.prompt_tokens,
-              outputTokens: chunk.usage.completion_tokens,
-              totalTokens: chunk.usage.total_tokens,
-            }
+            inputTokens: chunk.usage.prompt_tokens,
+            outputTokens: chunk.usage.completion_tokens,
+            totalTokens: chunk.usage.total_tokens,
+          }
           : undefined,
       };
     }
@@ -87,10 +88,10 @@ export class OpenAIProvider extends BaseProvider {
       finishReason: choice.finish_reason || 'stop',
       usage: response.usage
         ? {
-            inputTokens: response.usage.prompt_tokens,
-            outputTokens: response.usage.completion_tokens,
-            totalTokens: response.usage.total_tokens,
-          }
+          inputTokens: response.usage.prompt_tokens,
+          outputTokens: response.usage.completion_tokens,
+          totalTokens: response.usage.total_tokens,
+        }
         : undefined,
     };
   }

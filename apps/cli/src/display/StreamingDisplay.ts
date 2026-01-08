@@ -3,6 +3,7 @@
  */
 
 import chalk from 'chalk';
+import { ToolRenderer } from './ToolRenderer.js';
 
 export interface StreamingEvent {
   type: 'text_delta' | 'tool_call' | 'tool_output' | 'done' | 'error';
@@ -19,6 +20,7 @@ export class StreamingDisplayManager {
   private sections: OutputSection[] = [];
   private currentText = '';
   private pendingToolCalls = 0;
+  private toolNames = new Map<string, string>();
 
   handleEvent(event: StreamingEvent): void {
     switch (event.type) {
@@ -27,18 +29,35 @@ export class StreamingDisplayManager {
         break;
 
       case 'tool_call':
+        this.toolNames.set(event.data.id, event.data.name);
+
+        let args = {};
+        try {
+          args = JSON.parse(event.data.arguments || '{}');
+        } catch (e) {
+          args = { raw: event.data.arguments };
+        }
+
         this.sections.push({
           type: 'tool_call',
-          content: JSON.stringify(event.data),
+          content: ToolRenderer.renderToolCall(event.data.name, args),
           toolName: event.data.name,
         });
         this.pendingToolCalls++;
         break;
 
       case 'tool_output':
+        const name = this.toolNames.get(event.data.id) || 'tool';
+        let output = '';
+        if (event.data.error) {
+          output = chalk.red(`Error: ${event.data.error}\n`);
+        } else {
+          output = ToolRenderer.renderToolOutput(name, event.data.result);
+        }
+
         this.sections.push({
           type: 'tool_output',
-          content: this.formatToolOutput(event.data),
+          content: output,
         });
         this.pendingToolCalls--;
         break;
@@ -63,17 +82,7 @@ export class StreamingDisplayManager {
     }
   }
 
-  private formatToolOutput(data: any): string {
-    if (data.error) {
-      return chalk.red(`Error: ${data.error}`);
-    }
-    // Truncate long output
-    const result = String(data.result || '');
-    if (result.length > 500) {
-      return result.substring(0, 500) + '...';
-    }
-    return result;
-  }
+  // formatToolOutput removed as it is now handled in handleEvent via ToolRenderer
 
   render(): string {
     let output = '';
@@ -85,11 +94,8 @@ export class StreamingDisplayManager {
           break;
 
         case 'tool_call':
-          output += `\n${chalk.gray('▶')} ${chalk.cyan(section.toolName || 'tool')}`;
-          break;
-
         case 'tool_output':
-          output += `\n${chalk.dim(section.content)}`;
+          output += section.content;
           break;
       }
     }
