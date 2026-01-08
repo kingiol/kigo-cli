@@ -5,16 +5,18 @@
 [![Node.js](https://img.shields.io/badge/node-20+-blue.svg)](https://nodejs.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-An experimental, universal AI coding assistant for the terminal. Built in TypeScript, Kigo works with OpenAI, Anthropic, and other LLM providers.
+**Kigo** is an intelligent CLI-based AI coding assistant designed to bring agentic capabilities directly to your terminal. As a Node.js port of the original Kigo project, it serves as a powerful pair programmer that understands your codebase context.
+
+Built with a modular architecture, Kigo integrates seamlessly with major LLM providers (like OpenAI and Anthropic) and employs the Model Context Protocol (MCP) to extend its capabilities. Whether you need help with complex refactoring, file manipulation, or just want to chat with your code, Kigo handles it with persistent context awareness and a robust set of developer-focused tools.
 
 ## Features
 
-- **Universal AI Support** - Works with OpenAI, Anthropic, and other providers
-- **Smart Context** - Persistent sessions with SQLite storage
-- **Real-time Streaming** - Rich terminal displays with live output
-- **Comprehensive Tools** - File operations, search, shell, todos, and skills
-- **MCP Integration** - Extensible tool ecosystem via Model Context Protocol
-- **Zero Config** - Automatic provider detection with sensible defaults
+- **Universal AI Support** - Seamlessly works with top-tier LLM providers including OpenAI and Anthropic.
+- **Agentic Capabilities** - Autonomous file editing, shell command execution, and task planning directly from the CLI.
+- **Smart Context** - Features SQLite-backed persistent sessions and local history to maintain deep context of your work.
+- **MCP Integration** - Extensible tool ecosystem support via the Model Context Protocol.
+- **Skills System** - Unique "Skills" mechanism to load specialized knowledge on-demand, optimizing token usage.
+- **Developer Experience** - Built in TypeScript with a rich terminal UI, real-time streaming, and automatic provider detection.
 
 ## Installation
 
