@@ -43,6 +43,14 @@ export class StreamingDisplayManager {
         this.pendingToolCalls--;
         break;
 
+      case 'error':
+        // Add error as a text section
+        this.sections.push({
+          type: 'text',
+          content: chalk.red(`Error: ${event.data}`),
+        });
+        break;
+
       case 'done':
         if (this.currentText) {
           this.sections.push({

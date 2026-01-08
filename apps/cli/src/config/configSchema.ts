@@ -62,6 +62,7 @@ export type KoderConfig = z.infer<typeof KoderConfigSchema>;
 export const DEFAULT_CONFIG: KoderConfig = {
   model: {
     name: 'gpt-4o',
+    // name: 'deepseek-chat',
     provider: 'openai',
   },
   cli: {

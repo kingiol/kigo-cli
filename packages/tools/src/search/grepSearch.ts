@@ -3,7 +3,7 @@
  */
 
 import { z } from 'zod';
-import { glob } from 'fast-glob';
+import glob from 'fast-glob';
 import { tool } from '../registry.js';
 
 export const grepSearchSchema = z.object({

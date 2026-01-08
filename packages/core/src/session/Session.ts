@@ -5,6 +5,7 @@
 import Database from 'better-sqlite3';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import * as fs from 'node:fs';
 import type { Message, Usage, SessionUsage } from '../types.js';
 
 export interface SessionMetadata {
@@ -35,11 +36,8 @@ export class Session {
     const dbDir = path.dirname(dbPath);
 
     // Ensure directory exists
-    try {
-      const fs = require('node:fs');
+    if (!fs.existsSync(dbDir)) {
       fs.mkdirSync(dbDir, { recursive: true });
-    } catch {
-      // Ignore
     }
 
     this.db = new Database(dbPath);
