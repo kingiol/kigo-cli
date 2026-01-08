@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import { tool } from '../registry.js';
 import { SecurityGuard } from '../security.js';
+import { spawn } from 'node:child_process';
 
 // Background shell manager
 class BackgroundShellManager {
@@ -13,7 +14,6 @@ class BackgroundShellManager {
 
   static spawn(command: string, timeout: number = 300000): string {
     const shellId = `shell_${++this.shellIdCounter}`;
-    const { spawn } = require('node:child_process');
 
     const proc = spawn('bash', ['-c', command], {
       timeout,
@@ -94,8 +94,6 @@ tool({
     }
 
     return new Promise((resolve, _reject) => {
-      const { spawn } = require('node:child_process');
-
       const proc = spawn('bash', ['-c', command], {
         timeout: timeout * 1000,
       });
@@ -180,8 +178,6 @@ tool({
     }
 
     return new Promise((resolve, _reject) => {
-      const { spawn } = require('node:child_process');
-
       const proc = spawn('git', args.split(' '), {
         timeout: 30000,
       });

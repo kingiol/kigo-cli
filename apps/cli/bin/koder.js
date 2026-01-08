@@ -4,4 +4,4 @@
  * Koder CLI - Main executable
  */
 
-import '../dist/index.js';
+import '../dist/index.cjs';

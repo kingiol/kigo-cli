@@ -6,7 +6,7 @@ export default defineConfig({
     clean: true,
     bundle: true,
     // Bundle all dependencies
-    noExternal: [/(.*)/],
+    noExternal: [/^(?!better-sqlite3).*/],
     minify: false, // Keep readable for now, set to true for final build
     sourcemap: true,
     outDir: 'dist',
