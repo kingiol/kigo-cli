@@ -45,11 +45,11 @@ export const SkillsConfigSchema = z.object({
 
 // Main Kigo configuration
 export const KigoConfigSchema = z.object({
-  model: ModelConfigSchema,
-  cli: CLIConfigSchema,
+  model: ModelConfigSchema.default({}),
+  cli: CLIConfigSchema.default({}),
   mcpServers: z.array(MCPServerConfigSchema).default([]),
-  skills: SkillsConfigSchema,
-});
+  skills: SkillsConfigSchema.default({}),
+}).default({});
 
 // Export types
 export type ModelConfig = z.infer<typeof ModelConfigSchema>;
