@@ -20,6 +20,12 @@ export interface JSONRPCResponse {
   };
 }
 
+export interface JSONRPCNotification {
+  jsonrpc: '2.0';
+  method: string;
+  params?: any;
+}
+
 export interface MCPTool {
   name: string;
   description: string;
