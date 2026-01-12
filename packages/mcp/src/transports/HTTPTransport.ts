@@ -21,7 +21,10 @@ export class HTTPTransport implements Transport {
     try {
       const response = await fetch(this.baseUrl, {
         method: 'GET',
-        headers: this.headers,
+        headers: {
+          'Accept': 'application/json, text/event-stream',
+          ...this.headers,
+        },
       });
       if (response.ok) {
         this.connected = true;
@@ -49,6 +52,7 @@ export class HTTPTransport implements Transport {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Accept': 'application/json, text/event-stream',
             ...this.headers,
           },
           body: JSON.stringify(initRequest),
@@ -77,6 +81,7 @@ export class HTTPTransport implements Transport {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json, text/event-stream',
         ...this.headers,
       },
       body: JSON.stringify(request),

@@ -83,6 +83,7 @@ export class SSETransport implements Transport {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json, text/event-stream',
           ...this.headers,
         },
         body: JSON.stringify(request),
