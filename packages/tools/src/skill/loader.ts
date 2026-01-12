@@ -45,6 +45,8 @@ export class SkillLoader {
       // Directory doesn't exist
     }
 
+    // console.log(`load skills ==> ${JSON.stringify(skills)}`)
+
     return skills;
   }
 
