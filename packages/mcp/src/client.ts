@@ -67,6 +67,10 @@ export class MCPClient {
       throw new Error(`MCP initialization failed: ${response.error.message}`);
     }
 
+    if (this.transport instanceof SSETransport) {
+      await this.transport.sendNotification('notifications/initialized', {});
+    }
+
     this.initialized = true;
   }
 
