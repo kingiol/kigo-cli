@@ -370,12 +370,22 @@ export async function runInteractive(
         }
       }
       if (key.name === 'escape') {
-        menuActive = false;
-        clearMenu();
-        if (renderTimeout) {
-          clearTimeout(renderTimeout);
-          renderTimeout = null;
+        if (menuActive) {
+          menuActive = false;
+          clearMenu();
+          if (renderTimeout) {
+            clearTimeout(renderTimeout);
+            renderTimeout = null;
+          }
+          return;
         }
+
+        // Global cancel if menu is not active
+        console.log(chalk.yellow('\n[Cancelled]'));
+        // Clear input
+        rl.write(null, { ctrl: true, name: 'u' });
+        display.reset();
+        showPrompt();
         return;
       }
     }
@@ -418,16 +428,6 @@ export async function runInteractive(
   });
 
   let isRunning = true;
-
-  // ESC key handler
-  process.stdin.on('data', (key: Buffer) => {
-    if (key[0] === 27 && isRunning) {
-      // ESC key - cancel current operation
-      console.log(chalk.yellow('\n[Cancelled]'));
-      display.reset();
-      showPrompt();
-    }
-  });
 
   function showPrompt(): void {
     process.stdout.write('\x1b[2K\r'); // Clear line
