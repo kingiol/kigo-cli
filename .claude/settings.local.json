@@ -6,7 +6,13 @@
       "Bash(pnpm build)",
       "Bash(npx tsc:*)",
       "Bash(ls:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(npm info better-sqlite3 --json)",
+      "Bash(node:*)",
+      "Bash(npm:*)",
+      "Bash(chmod:*)",
+      "Bash(yamllint:*)",
+      "Bash(grep:*)"
     ]
   }
 }

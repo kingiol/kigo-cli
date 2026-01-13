@@ -1,6 +1,29 @@
 {
-  "name": "@kigo/cli",
-  "version": "0.1.0",
+  "name": "@kingiol/kigo-cli",
+  "version": "0.1.2",
+  "description": "AI-powered coding assistant CLI - Your intelligent pair programming companion",
+  "keywords": [
+    "ai",
+    "cli",
+    "coding-assistant",
+    "anthropic",
+    "claude",
+    "openai",
+    "gpt",
+    "code-generation",
+    "developer-tools"
+  ],
+  "homepage": "https://github.com/kingiol/kigo-cli#readme",
+  "bugs": {
+    "url": "https://github.com/kingiol/kigo-cli/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kingiol/kigo-cli.git",
+    "directory": "apps/cli"
+  },
+  "license": "MIT",
+  "author": "Kingiol(kingxiaokang@gmail.com)",
   "type": "module",
   "bin": {
     "kigo": "./bin/kigo.js"
@@ -18,24 +41,33 @@
     "package": "pkg .",
     "test": "vitest run",
     "lint": "eslint src/**/*.ts",
-    "dev": "node --loader ts-node/esm ./src/index.ts"
+    "dev": "node --loader ts-node/esm ./src/index.ts",
+    "prepublishOnly": "pnpm build",
+    "prepack": "pnpm build"
+  },
+  "files": [
+    "bin/",
+    "dist/",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "dependencies": {
-    "@kigo/auth": "workspace:*",
-    "@kigo/core": "workspace:*",
-    "@kigo/mcp": "workspace:*",
-    "@kigo/tools": "workspace:*",
-    "better-sqlite3": "^12.5.0",
-    "chalk": "^5.3.0",
-    "cli-highlight": "^2.1.11",
-    "cliui": "^8.0.1",
-    "commander": "^11.1.0",
-    "enquirer": "^2.4.1",
-    "inquirer": "^9.2.12",
-    "js-yaml": "^4.1.0",
-    "marked": "^11.1.1",
-    "ora": "^8.0.1",
-    "zod": "^3.22.4"
+    "better-sqlite3": "^12.5.0"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
