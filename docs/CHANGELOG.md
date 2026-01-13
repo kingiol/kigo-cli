@@ -11,7 +11,7 @@
 
 ### 修改的文件 (1)
 
-#### 1. `apps/cli/package.json`
+#### 1. `../apps/cli/package.json`
 **变更内容**:
 - ✅ 添加包描述和关键词
 - ✅ 添加 homepage、bugs、repository 信息
@@ -30,24 +30,24 @@
 
 #### CI/CD 配置 (2)
 
-1. **`.github/workflows/test.yml`**
+1. **`../.github/workflows/test.yml`**
    - 跨平台自动化测试
    - 测试矩阵: 3 OS × 2 Node 版本 = 6 组合
    - 验证 CLI 安装和原生模块
 
-2. **`.github/workflows/release.yml`**
+2. **`../.github/workflows/release.yml`**
    - 自动构建和发布
    - 6 个平台的二进制文件
    - 自动发布到 npm 和 GitHub Releases
 
 #### 构建脚本 (2)
 
-3. **`apps/cli/scripts/build-binary.sh`**
+3. **`../apps/cli/scripts/build-binary.sh`**
    - macOS/Linux 二进制构建脚本
    - 使用 caxa 打包
    - 自动检测平台和架构
 
-4. **`apps/cli/scripts/build-binary.bat`**
+4. **`../apps/cli/scripts/build-binary.bat`**
    - Windows 二进制构建脚本
    - 与 Unix 版本功能对等
 
@@ -63,17 +63,17 @@
    - 发布前检查清单
    - 包含自动化发布脚本
 
-7. **`docs/CROSS_PLATFORM_GUIDE.md`** (2,500+ 行)
+7. **`CROSS_PLATFORM_GUIDE.md`** (2,500+ 行)
    - 跨平台支持技术指南
    - 实施细节和最佳实践
    - 包含支持矩阵和资源链接
 
-8. **`QUICK_START.md`** (1,200+ 行)
+8. **`IMPLEMENTATION_SUMMARY.md`** (1,200+ 行)
    - 快速开始指南
    - 下一步行动计划
    - 测试验证清单
 
-9. **`docs/CHANGELOG.md`** (本文件)
+9. **`CHANGELOG.md`** (本文件)
    - 完整的变更记录
    - 实施报告
 
@@ -100,7 +100,7 @@
 
 #### 方式 A: npm 全局安装
 ```bash
-npm install -g @kigo/cli
+npm install -g @kingiol/kigo-cli
 ```
 - ✅ 自动处理原生模块
 - ✅ 最简单的安装方式
@@ -159,7 +159,7 @@ git clone ... && pnpm install && pnpm build
 
 ```json
 {
-  "name": "@kigo/cli",
+  "name": "@kingiol/kigo-cli",
   "bin": {
     "kigo": "./bin/kigo.js"
   },
@@ -203,7 +203,7 @@ strategy:
 
 1. **更新仓库信息** (5分钟)
    ```bash
-   # 编辑 apps/cli/package.json
+   # 编辑 ../apps/cli/package.json
    # 替换 "your-org" 为实际组织名
    ```
 
@@ -335,8 +335,8 @@ npm pack --dry-run  # ✅ 验证包内容
 ### 项目文档
 - 安装指南: `INSTALLATION.md`
 - 发布指南: `RELEASE.md`
-- 技术指南: `docs/CROSS_PLATFORM_GUIDE.md`
-- 快速开始: `QUICK_START.md`
+- 技术指南: `CROSS_PLATFORM_GUIDE.md`
+- 快速开始: `IMPLEMENTATION_SUMMARY.md`
 
 ### 外部资源
 - npm 文档: https://docs.npmjs.com/
@@ -432,7 +432,7 @@ npm pack --dry-run  # ✅ 验证包内容
 ⏳ 跨平台验证测试
 
 ### 下一步
-1. 更新仓库信息 → `apps/cli/package.json`
+1. 更新仓库信息 → `../apps/cli/package.json`
 2. 配置 npm 账号 → `npm login`
 3. 配置 GitHub Secrets → NPM_TOKEN
 4. 发布第一个版本 → `npm publish`
@@ -462,9 +462,9 @@ koder-node/
 ├── docs/
 │   ├── CROSS_PLATFORM_GUIDE.md  ← 新增：技术指南
 │   └── CHANGELOG.md             ← 新增：本文件
-├── INSTALLATION.md          ← 新增：安装指南
+├── docs/INSTALLATION.md          ← 新增：安装指南 (Moved to docs/)
 ├── RELEASE.md              ← 新增：发布指南
-└── QUICK_START.md          ← 新增：快速开始
+└── docs/IMPLEMENTATION_SUMMARY.md          ← 新增：快速开始 (Moved and Renamed)
 ```
 
 **总计**:

@@ -10,7 +10,7 @@
 
 ### 1. 包配置优化 (package.json)
 
-**位置**: `apps/cli/package.json`
+**位置**: `../apps/cli/package.json`
 
 **改进内容**:
 - ✅ 添加 `files` 字段，指定发布文件
@@ -21,8 +21,8 @@
 ### 2. CI/CD 自动化
 
 **文件**:
-- `.github/workflows/test.yml` - 跨平台测试
-- `.github/workflows/release.yml` - 自动发布
+- `../.github/workflows/test.yml` - 跨平台测试
+- `../.github/workflows/release.yml` - 自动发布
 
 **测试覆盖**:
 | 平台 | Node 版本 | 状态 |
@@ -53,8 +53,8 @@
 ### 4. 二进制打包
 
 **脚本**:
-- `apps/cli/scripts/build-binary.sh` (macOS/Linux)
-- `apps/cli/scripts/build-binary.bat` (Windows)
+- `../apps/cli/scripts/build-binary.sh` (macOS/Linux)
+- `../apps/cli/scripts/build-binary.bat` (Windows)
 
 **使用方法**:
 
@@ -84,7 +84,7 @@ scripts\build-binary.bat
 
 **安装命令**:
 ```bash
-npm install -g @kigo/cli
+npm install -g @kingiol/kigo-cli
 ```
 
 **发布步骤**:
@@ -189,7 +189,7 @@ const arch = os.arch(); // 'x64', 'arm64'
 
 ### Shebang 处理
 
-**文件**: `apps/cli/bin/kigo.js`
+**文件**: `../apps/cli/bin/kigo.js`
 
 ```javascript
 #!/usr/bin/env node
@@ -279,7 +279,7 @@ git push origin v0.1.0
 - [ ] **Docker 镜像**:
   ```dockerfile
   FROM node:20-alpine
-  RUN npm install -g @kigo/cli
+  RUN npm install -g @kingiol/kigo-cli
   ENTRYPOINT ["kigo"]
   ```
 
@@ -343,16 +343,17 @@ GitHub Actions 会自动在以下平台测试:
 
 ## 📚 相关文档
 
-- **安装指南**: `INSTALLATION.md`
-- **Claude 集成**: `CLAUDE.md`
-- **项目 README**: `README.md`
+- 安装指南: `INSTALLATION.md`
+- 发布指南: `RELEASE.md`
+- 技术指南: `CROSS_PLATFORM_GUIDE.md`
+- 快速开始: `IMPLEMENTATION_SUMMARY.md`
 - **更新日志**: `CHANGELOG.md`
 
 ---
 
 ## 🔗 资源链接
 
-- **npm 包**: https://www.npmjs.com/package/@kigo/cli
+- **npm 包**: https://www.npmjs.com/package/@kingiol/kigo-cli
 - **GitHub 仓库**: https://github.com/你的组织/kigo-node
 - **问题跟踪**: https://github.com/你的组织/kigo-node/issues
 - **发布页面**: https://github.com/你的组织/kigo-node/releases

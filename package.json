@@ -13,7 +13,7 @@
     "test": "turbo run test",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,js,md,json}\"",
-    "dev": "pnpm --filter @kigo/cli dev"
+    "dev": "pnpm --filter @kingiol/kigo-cli dev"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
