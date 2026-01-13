@@ -9,13 +9,21 @@ import { runInteractive } from './interactive.js';
 import { configCommands } from './commands/config.js';
 import { authCommands } from './commands/auth.js';
 import { mcpCommands } from './commands/mcp.js';
+import { readFileSync } from 'fs';
 
 const program = new Command();
+
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf8'));
 
 program
   .name('kigo')
   .description('AI coding assistant for the terminal')
-  .version('0.1.0');
+  .version(pkg.version);
 
 // Main command - run interactive or single prompt
 program

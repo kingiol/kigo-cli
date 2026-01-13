@@ -1,6 +1,6 @@
 {
   "name": "@kingiol/kigo-cli",
-  "version": "0.1.2",
+  "version": "0.1.6",
   "description": "AI-powered coding assistant CLI - Your intelligent pair programming companion",
   "keywords": [
     "ai",

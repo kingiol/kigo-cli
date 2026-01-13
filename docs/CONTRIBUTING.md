@@ -142,6 +142,9 @@ The **Release Workflow** (`.github/workflows/release.yml`) will automatically:
    
    # 4. Publish
    npm publish --access public --registry=https://registry.npmjs.org/
+
+   # 5. View published package
+   npm view @kingiol/kigo-cli
    ```
 
 ### Manual Binary Build
