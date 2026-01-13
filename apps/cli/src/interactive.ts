@@ -231,10 +231,12 @@ export async function runInteractive(
   // Menu state
   let menuActive = false;
   let selectedIndex = 0;
-  let suggestions: string[] = [];
+  let suggestions: { name: string; description: string }[] = [];
   let renderedLines = 0;
   let lastLine = '';
   let pendingSelection: string | null = null;
+  let ignoreKeypress = false; // Flag to prevent triggering menu on programmatic writes
+  let renderTimeout: NodeJS.Timeout | null = null;
 
   function renderMenu() {
     // 1. Hide cursor
@@ -251,10 +253,15 @@ export async function runInteractive(
     suggestions.forEach((item, index) => {
       process.stdout.write('\x1b[2K'); // Clear line
       process.stdout.write('\r'); // Start of line
+
+      const cmdStr = `/${item.name}`.padEnd(15);
+      const descStr = item.description;
+      const lineContent = ` ${cmdStr} - ${descStr} `;
+
       if (index === selectedIndex) {
-        process.stdout.write(chalk.bgBlue.bold.white(` ${item} `));
+        process.stdout.write(chalk.bgBlue.bold.white(lineContent));
       } else {
-        process.stdout.write(chalk.dim(` ${item} `));
+        process.stdout.write(chalk.dim(lineContent));
       }
       process.stdout.write('\n');
     });
@@ -268,16 +275,11 @@ export async function runInteractive(
     }
 
     // Total lines we moved down = new items + cleared lines
-    // Actually loop above moved down.
-    // If renderedLines (old) = 5, new = 3.
-    // We printed 3 lines. Then loop 3->5 printed 2 lines. Total 5 lines down.
-    // If new = 5, old = 3. We printed 5 lines. Total 5 lines down.
     const totalLinesDown = Math.max(renderedLines, newRenderedLines);
 
     renderedLines = totalLinesDown; // Update state
 
     // 5. Move back up relative to where we started
-    // We moved down 1 (step 2) + totalLinesDown
     process.stdout.write(`\x1b[${totalLinesDown + 1}A`);
 
     // 6. Move cursor to correct column
@@ -304,7 +306,6 @@ export async function runInteractive(
       }
 
       // Move up relative
-      // 1 (initial newline) + renderedLines
       process.stdout.write(`\x1b[${renderedLines + 1}A`);
 
       // Restore column
@@ -319,7 +320,13 @@ export async function runInteractive(
   }
 
   process.stdin.on('keypress', (_str, key) => {
-    if (!isRunning) return;
+    if (!isRunning || ignoreKeypress) return;
+
+    // Clear any pending render timeout
+    if (renderTimeout) {
+      clearTimeout(renderTimeout);
+      renderTimeout = null;
+    }
 
     // Handle navigation when menu is active
     if (menuActive) {
@@ -335,10 +342,13 @@ export async function runInteractive(
       }
       if (key.name === 'tab') {
         if (suggestions[selectedIndex]) {
-          const completion = suggestions[selectedIndex];
+          const completion = '/' + suggestions[selectedIndex].name;
           // Update readline line
+          ignoreKeypress = true;
           rl.write(null, { ctrl: true, name: 'u' }); // Delete line
           rl.write(completion + ' '); // Write completion
+          ignoreKeypress = false;
+
           menuActive = false;
           clearMenu();
           return;
@@ -348,9 +358,13 @@ export async function runInteractive(
         if (suggestions[selectedIndex]) {
           // For Enter, we don't update readline here because it will trigger 'line' event anyway.
           // We save the selection to be handled in handleInput.
-          pendingSelection = suggestions[selectedIndex];
+          pendingSelection = '/' + suggestions[selectedIndex].name;
           menuActive = false;
           clearMenu();
+          if (renderTimeout) {
+            clearTimeout(renderTimeout);
+            renderTimeout = null;
+          }
           // Let readline handle the Enter key naturally
           return;
         }
@@ -358,17 +372,21 @@ export async function runInteractive(
       if (key.name === 'escape') {
         menuActive = false;
         clearMenu();
+        if (renderTimeout) {
+          clearTimeout(renderTimeout);
+          renderTimeout = null;
+        }
         return;
       }
     }
 
     // Wait for readline to update internal state
-    setTimeout(() => {
+    renderTimeout = setTimeout(() => {
       const line = rl.line;
       if (line && line.startsWith('/')) {
         const hits = slashRegistry.getAll()
-          .map((c) => '/' + c.name)
-          .filter((c) => c.startsWith(line));
+          .filter((c) => ('/' + c.name).startsWith(line))
+          .map(c => ({ name: c.name, description: c.description }));
 
         if (hits.length > 0) {
           suggestions = hits;
@@ -422,9 +440,15 @@ export async function runInteractive(
       const completion = pendingSelection;
       pendingSelection = null;
 
+      // Move cursor up to overwrite the line where Enter was pressed
+      process.stdout.write('\x1b[1A');
+
       // Show the completed command in the prompt
       showPrompt();
+
+      ignoreKeypress = true;
       rl.write(completion + ' ');
+      ignoreKeypress = false;
       return;
     }
 
