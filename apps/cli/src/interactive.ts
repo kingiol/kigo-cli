@@ -11,6 +11,13 @@ import { getConfigManager } from './config/ConfigManager.js';
 import { registry, SkillLoader } from '@kigo/tools';
 import { MCPManager } from '@kigo/mcp';
 import { ToolRenderer } from './display/ToolRenderer.js';
+import { SlashCommandRegistry } from './commands/slash/Registry.js';
+import { HelpCommand } from './commands/slash/definitions/HelpCommand.js';
+import { ClearCommand } from './commands/slash/definitions/ClearCommand.js';
+import { StatusCommand } from './commands/slash/definitions/StatusCommand.js';
+import { ExitCommand } from './commands/slash/definitions/ExitCommand.js';
+import { ConfigCommand } from './commands/slash/definitions/ConfigCommand.js';
+import { SessionCommand } from './commands/slash/definitions/SessionCommand.js';
 
 // Simple markdown renderer for streaming text
 function renderMarkdownChunk(text: string): string {
@@ -190,16 +197,81 @@ export async function runInteractive(
   const display = new StreamingDisplayManager();
   const statusLine = new StatusLine(sessionId, modelName);
 
+  // Initialize slash command registry
+  const slashRegistry = new SlashCommandRegistry();
+  slashRegistry.register(new HelpCommand());
+  slashRegistry.register(new ClearCommand());
+  slashRegistry.register(new StatusCommand());
+  slashRegistry.register(new ExitCommand());
+  slashRegistry.register(new ConfigCommand());
+  slashRegistry.register(new SessionCommand());
+
   // Setup readline
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
+    completer: (line: string) => {
+      if (!line.startsWith('/')) {
+        return [[], line];
+      }
+      const hits = slashRegistry.getAll()
+        .map((c) => '/' + c.name)
+        .filter((c) => c.startsWith(line));
+      return [hits, line];
+    },
   });
 
   // Handle keyboard input
   if (process.platform !== 'win32') {
     process.stdin.setRawMode(true);
   }
+
+  readline.emitKeypressEvents(process.stdin);
+
+  process.stdin.on('keypress', (_str, key) => {
+    if (!isRunning) return;
+
+    // Wait for readline to update internal state
+    setTimeout(() => {
+      // Logic for live suggestions
+      const line = rl.line;
+      if (line && line.startsWith('/')) {
+        const hits = slashRegistry.getAll()
+          .map((c) => '/' + c.name)
+          .filter((c) => c.startsWith(line));
+
+        if (hits.length > 0) {
+          // Save cursor position
+          process.stdout.write('\x1b[s');
+          // Move to next line
+          process.stdout.write('\n');
+          // Clear line
+          process.stdout.write('\x1b[2K');
+          // Print suggestions
+          const suggestions = hits.join('  ');
+          process.stdout.write(chalk.dim(suggestions));
+          // Restore cursor
+          process.stdout.write('\x1b[u');
+        } else {
+          // Clear suggestions line if no hits but starts with /
+          process.stdout.write('\x1b[s');
+          process.stdout.write('\n');
+          process.stdout.write('\x1b[2K');
+          process.stdout.write('\x1b[u');
+        }
+      } else {
+        // Clear suggestions line if not a slash command
+        // We only clear if we previously potentially showed something? 
+        // Safer to just clear line below always? No, might flicker.
+        // For now, let's only clear if it WAS a slash command or simple check.
+        // Actually, let's just clear the line below on every keypress if we are in prompt mode.
+        // Optimization: only if we think we showed something. 
+        // But for safety, clearing line below 
+        // process.stdout.write('\x1b[s\n\x1b[2K\x1b[u');
+        // This might be too aggressive.
+      }
+    }, 0);
+  });
 
   let isRunning = true;
 
@@ -301,73 +373,20 @@ export async function runInteractive(
   }
 
   async function handleSlashCommand(input: string): Promise<void> {
-    const [command, ..._args] = input.slice(1).split(' ');
-
-    switch (command) {
-      case 'help':
-        console.log(`
-${chalk.bold('Available commands:')}
-  /help     - Show this help
-  /clear    - Clear conversation history
-  /status   - Show session status
-  /exit     - Exit Kigo
-  /config   - Show configuration
-  /session  - Show session info
-`);
-        break;
-
-      case 'clear':
-        agent.reset();
-        session.reset();
-        console.log(chalk.green('Conversation cleared'));
-        break;
-
-      case 'status':
-        const usage: SessionUsage = session.getUsage() as SessionUsage;
-        console.log(`
-${chalk.bold('Session Status:')}
-  ID: ${sessionId}
-  Model: ${modelName}
-  Provider: ${provider}
-  Messages: ${agent.getMessages().length}
-  Input Tokens: ${usage.inputTokens}
-  Output Tokens: ${usage.outputTokens}
-  Total Cost: $${usage.totalCost.toFixed(4)}
-`);
-        break;
-
-      case 'exit':
+    const context = {
+      agent,
+      session,
+      configManager,
+      mcpManager,
+      registry: slashRegistry,
+      cleanup: async () => {
         isRunning = false;
         await mcpManager.close();
         rl.close();
         session.close();
-        console.log(chalk.yellow('Goodbye!'));
-        process.exit(0);
-        break;
-
-      case 'config':
-        const config = await configManager.load();
-        console.log(`
-${chalk.bold('Configuration:')}
-  Model: ${config.model.name}
-  Provider: ${config.model.provider}
-  Stream: ${config.cli.stream}
-  MCP Servers: ${config.mcpServers.length}
-  Skills: ${config.skills.enabled ? 'enabled' : 'disabled'}
-`);
-        break;
-
-      case 'session':
-        const sessions = await session.listSessions();
-        console.log(`
-${chalk.bold('Sessions:')}
-${sessions.map((s: { title: string | null; id: string; updatedAt: number | string | Date }) => `  - ${s.title || s.id} (${new Date(s.updatedAt).toLocaleString()})`).join('\n')}
-`);
-        break;
-
-      default:
-        console.log(chalk.red(`Unknown command: /${command}`));
-    }
+      }
+    };
+    await slashRegistry.execute(input, context);
   }
 
   // Welcome message
