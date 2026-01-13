@@ -228,12 +228,142 @@ export async function runInteractive(
 
   readline.emitKeypressEvents(process.stdin);
 
+  // Menu state
+  let menuActive = false;
+  let selectedIndex = 0;
+  let suggestions: string[] = [];
+  let renderedLines = 0;
+  let lastLine = '';
+  let pendingSelection: string | null = null;
+
+  function renderMenu() {
+    // 1. Hide cursor
+    process.stdout.write('\x1b[?25l');
+
+    // Calculate prompt width ("> " is length 2)
+    const promptWidth = 2;
+    const cursorCol = (rl.cursor || 0) + promptWidth;
+
+    // 2. Move down to start rendering (Relative)
+    process.stdout.write('\n');
+
+    // 3. Render items
+    suggestions.forEach((item, index) => {
+      process.stdout.write('\x1b[2K'); // Clear line
+      process.stdout.write('\r'); // Start of line
+      if (index === selectedIndex) {
+        process.stdout.write(chalk.bgBlue.bold.white(` ${item} `));
+      } else {
+        process.stdout.write(chalk.dim(` ${item} `));
+      }
+      process.stdout.write('\n');
+    });
+
+    // 4. Clear remaining lines from previous render
+    const newRenderedLines = suggestions.length;
+    if (renderedLines > newRenderedLines) {
+      for (let i = newRenderedLines; i < renderedLines; i++) {
+        process.stdout.write('\x1b[2K\n');
+      }
+    }
+
+    // Total lines we moved down = new items + cleared lines
+    // Actually loop above moved down.
+    // If renderedLines (old) = 5, new = 3.
+    // We printed 3 lines. Then loop 3->5 printed 2 lines. Total 5 lines down.
+    // If new = 5, old = 3. We printed 5 lines. Total 5 lines down.
+    const totalLinesDown = Math.max(renderedLines, newRenderedLines);
+
+    renderedLines = totalLinesDown; // Update state
+
+    // 5. Move back up relative to where we started
+    // We moved down 1 (step 2) + totalLinesDown
+    process.stdout.write(`\x1b[${totalLinesDown + 1}A`);
+
+    // 6. Move cursor to correct column
+    process.stdout.write('\r'); // Start of line
+    if (cursorCol > 0) {
+      process.stdout.write(`\x1b[${cursorCol}C`);
+    }
+
+    // 7. Show cursor
+    process.stdout.write('\x1b[?25h');
+  }
+
+  function clearMenu() {
+    if (renderedLines > 0) {
+      process.stdout.write('\x1b[?25l');
+
+      const promptWidth = 2;
+      const cursorCol = (rl.cursor || 0) + promptWidth;
+
+      // Move down
+      process.stdout.write('\n');
+      for (let i = 0; i < renderedLines; i++) {
+        process.stdout.write('\x1b[2K\n');
+      }
+
+      // Move up relative
+      // 1 (initial newline) + renderedLines
+      process.stdout.write(`\x1b[${renderedLines + 1}A`);
+
+      // Restore column
+      process.stdout.write('\r');
+      if (cursorCol > 0) {
+        process.stdout.write(`\x1b[${cursorCol}C`);
+      }
+
+      process.stdout.write('\x1b[?25h');
+      renderedLines = 0;
+    }
+  }
+
   process.stdin.on('keypress', (_str, key) => {
     if (!isRunning) return;
 
+    // Handle navigation when menu is active
+    if (menuActive) {
+      if (key.name === 'up') {
+        selectedIndex = (selectedIndex - 1 + suggestions.length) % suggestions.length;
+        renderMenu();
+        return;
+      }
+      if (key.name === 'down') {
+        selectedIndex = (selectedIndex + 1) % suggestions.length;
+        renderMenu();
+        return;
+      }
+      if (key.name === 'tab') {
+        if (suggestions[selectedIndex]) {
+          const completion = suggestions[selectedIndex];
+          // Update readline line
+          rl.write(null, { ctrl: true, name: 'u' }); // Delete line
+          rl.write(completion + ' '); // Write completion
+          menuActive = false;
+          clearMenu();
+          return;
+        }
+      }
+      if (key.name === 'return') {
+        if (suggestions[selectedIndex]) {
+          // For Enter, we don't update readline here because it will trigger 'line' event anyway.
+          // We save the selection to be handled in handleInput.
+          pendingSelection = suggestions[selectedIndex];
+          menuActive = false;
+          clearMenu();
+          // Let readline handle the Enter key naturally
+          return;
+        }
+      }
+      if (key.name === 'escape') {
+        menuActive = false;
+        clearMenu();
+        return;
+      }
+    }
+
     // Wait for readline to update internal state
     setTimeout(() => {
-      // Logic for live suggestions
       const line = rl.line;
       if (line && line.startsWith('/')) {
         const hits = slashRegistry.getAll()
@@ -241,34 +371,30 @@ export async function runInteractive(
           .filter((c) => c.startsWith(line));
 
         if (hits.length > 0) {
-          // Save cursor position
-          process.stdout.write('\x1b[s');
-          // Move to next line
-          process.stdout.write('\n');
-          // Clear line
-          process.stdout.write('\x1b[2K');
-          // Print suggestions
-          const suggestions = hits.join('  ');
-          process.stdout.write(chalk.dim(suggestions));
-          // Restore cursor
-          process.stdout.write('\x1b[u');
+          suggestions = hits;
+
+          // Reset selection if input changed (default to first match)
+          if (line !== lastLine) {
+            selectedIndex = 0;
+            lastLine = line;
+          } else {
+            // Keep selected index within bounds
+            if (selectedIndex >= suggestions.length) selectedIndex = 0;
+          }
+
+          menuActive = true;
+          renderMenu();
         } else {
-          // Clear suggestions line if no hits but starts with /
-          process.stdout.write('\x1b[s');
-          process.stdout.write('\n');
-          process.stdout.write('\x1b[2K');
-          process.stdout.write('\x1b[u');
+          menuActive = false;
+          clearMenu();
+          lastLine = line;
         }
       } else {
-        // Clear suggestions line if not a slash command
-        // We only clear if we previously potentially showed something? 
-        // Safer to just clear line below always? No, might flicker.
-        // For now, let's only clear if it WAS a slash command or simple check.
-        // Actually, let's just clear the line below on every keypress if we are in prompt mode.
-        // Optimization: only if we think we showed something. 
-        // But for safety, clearing line below 
-        // process.stdout.write('\x1b[s\n\x1b[2K\x1b[u');
-        // This might be too aggressive.
+        if (menuActive) {
+          menuActive = false;
+          clearMenu();
+        }
+        lastLine = line || '';
       }
     }, 0);
   });
@@ -291,6 +417,17 @@ export async function runInteractive(
   }
 
   async function handleInput(input: string): Promise<void> {
+    if (pendingSelection) {
+      // User pressed Enter to select a menu item
+      const completion = pendingSelection;
+      pendingSelection = null;
+
+      // Show the completed command in the prompt
+      showPrompt();
+      rl.write(completion + ' ');
+      return;
+    }
+
     if (!input.trim()) {
       showPrompt();
       return;
