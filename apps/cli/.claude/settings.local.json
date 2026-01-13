@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm --filter @kigo/tools build:*)",
+      "Bash(node --loader ts-node/esm --eval \"import\\(''''./src/index.ts''''\\).then\\(\\(\\) => console.log\\(''''✓ 路径映射配置成功''''\\)\\).catch\\(e => console.error\\(''''✗ 配置失败:'''', e.message\\)\\)\")",
+      "Bash(pnpm add:*)"
+    ]
+  }
+}

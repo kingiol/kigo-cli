@@ -41,7 +41,7 @@
     "package": "pkg .",
     "test": "vitest run",
     "lint": "eslint src/**/*.ts",
-    "dev": "node --loader ts-node/esm ./src/index.ts",
+    "dev": "tsx ./src/index.ts",
     "prepublishOnly": "pnpm build",
     "prepack": "pnpm build"
   },
@@ -67,13 +67,18 @@
     "registry": "https://registry.npmjs.org/"
   },
   "dependencies": {
-    "better-sqlite3": "^12.5.0"
+    "better-sqlite3": "^12.5.0",
+    "chalk": "^5.6.2",
+    "commander": "^14.0.2",
+    "js-yaml": "^4.1.1",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.11.0",
     "pkg": "^5.8.1",
     "ts-node": "^10.9.2",
-    "tsup": "^8.5.1"
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0"
   }
 }

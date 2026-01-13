@@ -1,1 +1,26 @@
-{"extends": "../../tsconfig.base.json", "compilerOptions": {"outDir": "./dist", "rootDir": "./src", "composite": true, "preserveSymlinks": true}, "include": ["src/**/*"], "references": [{"path": "../../packages/core"}, {"path": "../../packages/tools"}, {"path": "../../packages/mcp"}, {"path": "../../packages/auth"}]}
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "composite": true,
+    "preserveSymlinks": true,
+    "paths": {
+      "@kigo/tools": ["../../packages/tools/src/index.ts"],
+      "@kigo/tools/*": ["../../packages/tools/src/*"],
+      "@kigo/core": ["../../packages/core/src/index.ts"],
+      "@kigo/core/*": ["../../packages/core/src/*"],
+      "@kigo/mcp": ["../../packages/mcp/src/index.ts"],
+      "@kigo/mcp/*": ["../../packages/mcp/src/*"],
+      "@kigo/auth": ["../../packages/auth/src/index.ts"],
+      "@kigo/auth/*": ["../../packages/auth/src/*"]
+    }
+  },
+  "include": ["src/**/*"],
+  "references": [
+    {"path": "../../packages/core"},
+    {"path": "../../packages/tools"},
+    {"path": "../../packages/mcp"},
+    {"path": "../../packages/auth"}
+  ]
+}

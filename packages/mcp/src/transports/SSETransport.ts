@@ -3,7 +3,7 @@
  * Implements the HTTP+SSE transport as specified in MCP protocol
  */
 
-import { ErrorEvent, EventSource } from 'eventsource';
+import EventSource from 'eventsource';
 import type { JSONRPCRequest, JSONRPCResponse, JSONRPCNotification } from '../types.js';
 import type { Transport } from './Transport.js';
 
@@ -50,7 +50,7 @@ export class SSETransport implements Transport {
         // Don't resolve yet - wait for endpoint event
       };
 
-      this.eventSource!.onerror = (error: ErrorEvent) => {
+      this.eventSource!.onerror = (error) => {
         console.error('[SSE] Connection error:', error);
         this.connected = false;
         if (!endpointReceived) {
