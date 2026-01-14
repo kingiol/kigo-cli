@@ -4,6 +4,7 @@
 
 import * as readline from 'node:readline';
 import chalk from 'chalk';
+import ora from 'ora';
 import { Agent, AgentScheduler, Session, ProviderFactory } from '@kigo/core';
 import { StreamingDisplayManager } from './display/StreamingDisplay.js';
 import { StatusLine, type SessionUsage } from './display/StatusLine.js';
@@ -239,6 +240,7 @@ export interface InteractiveOptions {
   session?: string;
   stream?: boolean;
   model?: string;
+  version?: string;
 }
 
 export async function runInteractive(
@@ -598,9 +600,24 @@ export async function runInteractive(
     display.reset();
     console.log();
 
+    // Spinner
+    const spinner = ora({
+      text: 'Thinking...',
+      color: 'cyan',
+    });
+
     try {
       const toolCallNameMap = new Map<string, string>();
+
+      // Start spinner
+      spinner.start();
+
       for await (const event of scheduler.run(input)) {
+        // Stop spinner when we get an event
+        if (spinner.isSpinning) {
+          spinner.stop();
+        }
+
         display.handleEvent(event);
 
         if (options.stream !== false) {
@@ -619,6 +636,10 @@ export async function runInteractive(
               args = { raw: event.data.arguments };
             }
             process.stdout.write(ToolRenderer.renderToolCall(event.data.name, args));
+
+            // Start spinner for execution
+            spinner.text = 'Executing...';
+            spinner.start();
           } else if (event.type === 'tool_output') {
             // Show tool output
             const name = toolCallNameMap.get(event.data.id) || 'tool';
@@ -627,11 +648,20 @@ export async function runInteractive(
             } else {
               process.stdout.write(ToolRenderer.renderToolOutput(name, event.data.result));
             }
+
+            // Back to thinking
+            spinner.text = 'Thinking...';
+            spinner.start();
           } else if (event.type === 'error') {
             // Show errors
             process.stdout.write(chalk.red(`\nError: ${event.data}\n`));
           }
         }
+      }
+
+      // Stop spinner if still running (e.g. at the end)
+      if (spinner.isSpinning) {
+        spinner.stop();
       }
 
       // Final newline
@@ -654,6 +684,9 @@ export async function runInteractive(
       const usage: SessionUsage = session.getUsage() as SessionUsage;
       statusLine.updateUsage(usage);
     } catch (error) {
+      if (spinner.isSpinning) {
+        spinner.stop();
+      }
       console.error(chalk.red(`Error: ${error instanceof Error ? error.message : String(error)}`));
     }
 
@@ -678,7 +711,8 @@ export async function runInteractive(
   }
 
   // Welcome message
-  console.log(chalk.cyan.bold('Kigo v0.1.0'));
+  const version = options.version || '0.0.0';
+  console.log(chalk.cyan.bold(`Kigo v${version}`));
   console.log(chalk.dim('AI coding assistant for the terminal'));
   console.log(chalk.dim('Type /help for available commands\n'));
 

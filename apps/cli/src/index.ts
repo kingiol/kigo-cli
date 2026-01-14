@@ -42,7 +42,10 @@ program
       // TODO: Implement single prompt execution
     } else {
       // Interactive mode
-      await runInteractive(configManager, options);
+      await runInteractive(configManager, {
+        ...options,
+        version: pkg.version
+      });
     }
   });
 
