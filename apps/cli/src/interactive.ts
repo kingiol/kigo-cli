@@ -604,7 +604,6 @@ export async function runInteractive(
     const spinner = ora({
       text: 'Thinking...',
       color: 'cyan',
-      stream: process.stdout,
     });
 
     try {
@@ -660,6 +659,19 @@ export async function runInteractive(
         }
       }
 
+      // Stop spinner if still running (e.g. at the end)
+      if (spinner.isSpinning) {
+        spinner.stop();
+      }
+
+      // Final newline
+      if (options.stream !== false) {
+        console.log();
+      } else {
+        // Non-streaming mode: show full render at the end
+        console.log(display.render());
+      }
+
       // Save assistant messages
       const messages = agent.getMessages();
       for (const msg of messages) {
@@ -671,20 +683,11 @@ export async function runInteractive(
       // Update status line
       const usage: SessionUsage = session.getUsage() as SessionUsage;
       statusLine.updateUsage(usage);
-
-      // Final newline
-      if (options.stream !== false) {
-        console.log();
-      } else {
-        // Non-streaming mode: show full render at the end
-        console.log(display.render());
-      }
     } catch (error) {
-      console.error(chalk.red(`Error: ${error instanceof Error ? error.message : String(error)}`));
-    } finally {
       if (spinner.isSpinning) {
         spinner.stop();
       }
+      console.error(chalk.red(`Error: ${error instanceof Error ? error.message : String(error)}`));
     }
 
     showPrompt();

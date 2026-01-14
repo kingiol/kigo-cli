@@ -11,17 +11,6 @@ import { authCommands } from './commands/auth.js';
 import { mcpCommands } from './commands/mcp.js';
 import { readFileSync } from 'fs';
 
-// Suppress punycode deprecation warning
-process.removeAllListeners('warning');
-process.on('warning', (warning) => {
-  const w = warning as any;
-  if (warning.name === 'DeprecationWarning' && (w.code === 'DEP0169' || w.code === 'DEP0040')) {
-    return;
-  }
-  // Print other warnings to stderr (default behavior)
-  console.warn(warning);
-});
-
 const program = new Command();
 
 import { fileURLToPath } from 'url';
