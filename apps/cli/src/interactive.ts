@@ -604,6 +604,7 @@ export async function runInteractive(
     const spinner = ora({
       text: 'Thinking...',
       color: 'cyan',
+      discardStdin: false,
     });
 
     try {
