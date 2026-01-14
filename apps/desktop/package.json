@@ -1,0 +1,35 @@
+{
+  "name": "@kingiol/kigo-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev --config electron.vite.config.ts",
+    "build": "electron-vite build --config electron.vite.config.ts",
+    "preview": "electron-vite preview --config electron.vite.config.ts",
+    "lint": "eslint \"src/**/*.{ts,tsx}\""
+  },
+  "dependencies": {
+    "@kigo/core": "workspace:*",
+    "@kigo/mcp": "workspace:*",
+    "@kigo/tools": "workspace:*",
+    "js-yaml": "^4.1.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "@typescript-eslint/eslint-plugin": "^7.0.1",
+    "@typescript-eslint/parser": "^7.0.1",
+    "@vitejs/plugin-react": "^4.2.1",
+    "electron": "^28.1.0",
+    "electron-vite": "^2.1.0",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.12"
+  }
+}

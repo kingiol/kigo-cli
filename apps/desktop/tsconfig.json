@@ -1,0 +1,22 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@renderer/*": ["src/renderer/*"],
+      "@main/*": ["src/main/*"],
+      "@preload/*": ["src/preload/*"],
+      "@kigo/tools": ["../../packages/tools/src/index.ts"],
+      "@kigo/tools/*": ["../../packages/tools/src/*"],
+      "@kigo/core": ["../../packages/core/src/index.ts"],
+      "@kigo/core/*": ["../../packages/core/src/*"],
+      "@kigo/mcp": ["../../packages/mcp/src/index.ts"],
+      "@kigo/mcp/*": ["../../packages/mcp/src/*"],
+      "@kigo/auth": ["../../packages/auth/src/index.ts"],
+      "@kigo/auth/*": ["../../packages/auth/src/*"]
+    }
+  },
+  "include": ["src"]
+}

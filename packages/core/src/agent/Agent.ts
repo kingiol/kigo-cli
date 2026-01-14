@@ -161,6 +161,10 @@ export class Agent {
     return this.messages;
   }
 
+  loadMessages(messages: Message[]): void {
+    this.messages = [...messages];
+  }
+
   reset(): void {
     this.messages = [];
   }
