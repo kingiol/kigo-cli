@@ -18,6 +18,13 @@
   box-sizing: border-box;
 }
 
+button,
+input,
+select,
+textarea {
+  -webkit-app-region: no-drag;
+}
+
 body {
   margin: 0;
   font-family: var(--font);
@@ -26,12 +33,15 @@ body {
     var(--bg);
   color: var(--text);
   min-height: 100vh;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .app-shell {
   display: grid;
   grid-template-columns: 260px 1fr;
   min-height: 100vh;
+  -webkit-app-region: drag;
 }
 
 .sidebar {
@@ -63,6 +73,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  -webkit-app-region: no-drag;
 }
 
 .nav-item {
@@ -85,12 +96,14 @@ body {
 
 .sidebar-footer {
   margin-top: auto;
+  -webkit-app-region: no-drag;
 }
 
 .sessions {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  -webkit-app-region: no-drag;
 }
 
 .sessions-header {
@@ -174,6 +187,7 @@ body {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 24px;
+  -webkit-app-region: drag;
 }
 
 .title {
@@ -227,6 +241,7 @@ button.ghost {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 18px;
+  -webkit-app-region: no-drag;
 }
 
 .modal-backdrop {
@@ -415,6 +430,8 @@ button.ghost {
   padding: 12px 14px;
   border-radius: 12px;
   background: var(--panel-strong);
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .message.user {
