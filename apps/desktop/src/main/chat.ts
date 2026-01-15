@@ -113,7 +113,8 @@ export class ChatService {
     const agent = new Agent({
       provider,
       systemPrompt: DEFAULT_SYSTEM_PROMPT,
-      tools: [...builtinTools, ...mcpTools]
+      tools: [...builtinTools, ...mcpTools],
+      sessionId
     });
     agent.loadMessages(history);
 

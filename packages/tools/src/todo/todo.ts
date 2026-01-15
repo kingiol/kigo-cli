@@ -13,26 +13,69 @@ interface TodoItem {
   content: string;
   status: 'pending' | 'in_progress' | 'completed';
   priority: string;
+  sessionId?: string;
+  toolCallId?: string;
+  createdAt?: number;
+  updatedAt?: number;
 }
 
-const TODO_FILE = path.join(os.homedir(), '.kigo', 'todos.json');
+const LEGACY_TODO_FILE = path.join(os.homedir(), '.kigo', 'todos.json');
+const TODO_DIR = path.join(os.homedir(), '.kigo', 'todos');
+
+function getSessionContext(): { sessionId: string; toolCallId?: string } {
+  const sessionId = process.env.KIGO_SESSION_ID || 'session_default';
+  const toolCallId = process.env.KIGO_TOOL_CALL_ID || undefined;
+  return { sessionId, toolCallId };
+}
+
+function sanitizeId(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]/g, '_');
+}
+
+function getTodoFile(sessionId: string): string {
+  const safeSessionId = sanitizeId(sessionId);
+  return path.join(TODO_DIR, `${safeSessionId}.json`);
+}
 
 async function ensureTodoDir(): Promise<void> {
-  await fs.mkdir(path.dirname(TODO_FILE), { recursive: true });
+  await fs.mkdir(TODO_DIR, { recursive: true });
 }
 
 async function loadTodos(): Promise<TodoItem[]> {
+  const { sessionId } = getSessionContext();
+  const todoFile = getTodoFile(sessionId);
   try {
-    const content = await fs.readFile(TODO_FILE, 'utf-8');
+    const content = await fs.readFile(todoFile, 'utf-8');
     return JSON.parse(content);
   } catch {
-    return [];
+    try {
+      const legacyContent = await fs.readFile(LEGACY_TODO_FILE, 'utf-8');
+      const legacyTodos = JSON.parse(legacyContent);
+      const migrated = (Array.isArray(legacyTodos) ? legacyTodos : []).map((todo: TodoItem) => ({
+        ...todo,
+        sessionId: todo.sessionId || sessionId,
+      }));
+      await ensureTodoDir();
+      await fs.writeFile(todoFile, JSON.stringify(migrated, null, 2), 'utf-8');
+      return migrated;
+    } catch {
+      return [];
+    }
   }
 }
 
 async function saveTodos(todos: TodoItem[]): Promise<void> {
   await ensureTodoDir();
-  await fs.writeFile(TODO_FILE, JSON.stringify(todos, null, 2), 'utf-8');
+  const { sessionId, toolCallId } = getSessionContext();
+  const now = Date.now();
+  const normalized = todos.map(todo => ({
+    ...todo,
+    sessionId: todo.sessionId || sessionId,
+    toolCallId: todo.toolCallId || toolCallId,
+    createdAt: todo.createdAt || now,
+    updatedAt: now,
+  }));
+  await fs.writeFile(getTodoFile(sessionId), JSON.stringify(normalized, null, 2), 'utf-8');
 }
 
 const STATUS_EMOJI: Record<string, string> = {
@@ -96,6 +139,10 @@ const todoWriteSchema = z.object({
         status: z.enum(['pending', 'in_progress', 'completed']),
         priority: z.string(),
         id: z.string(),
+        sessionId: z.string().optional(),
+        toolCallId: z.string().optional(),
+        createdAt: z.number().optional(),
+        updatedAt: z.number().optional(),
       })
     )
     .describe('Array of todo items'),
@@ -120,11 +167,17 @@ export const createTodoSchema = z.object({
 
 export async function createTodo(content: string): Promise<string> {
   const todos = await loadTodos();
+  const { sessionId, toolCallId } = getSessionContext();
+  const now = Date.now();
   const newTodo: TodoItem = {
     id: `todo_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
     content,
     status: 'pending',
     priority: 'normal',
+    sessionId,
+    toolCallId,
+    createdAt: now,
+    updatedAt: now,
   };
   todos.push(newTodo);
   await saveTodos(todos);
@@ -136,6 +189,7 @@ export async function completeTodo(id: string): Promise<boolean> {
   const todo = todos.find(t => t.id === id);
   if (todo) {
     todo.status = 'completed';
+    todo.updatedAt = Date.now();
     await saveTodos(todos);
     return true;
   }

@@ -314,6 +314,7 @@ export async function runInteractive(
     provider: llmProvider,
     systemPrompt,
     tools: allTools,
+    sessionId,
   });
 
   // Create scheduler

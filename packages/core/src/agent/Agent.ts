@@ -10,6 +10,7 @@ export interface AgentOptions {
   tools?: Tool[];
   maxTokens?: number;
   temperature?: number;
+  sessionId?: string;
 }
 
 export class Agent {
@@ -120,8 +121,23 @@ export class Agent {
               continue;
             }
 
+            const args = JSON.parse(toolCall.arguments);
+            const env = process.env;
+            const prevSession = env.KIGO_SESSION_ID;
+            const prevToolCallId = env.KIGO_TOOL_CALL_ID;
+            const prevToolName = env.KIGO_TOOL_NAME;
+
+            if (this.options.sessionId) {
+              env.KIGO_SESSION_ID = this.options.sessionId;
+            }
+            if (toolCall.id) {
+              env.KIGO_TOOL_CALL_ID = toolCall.id;
+            }
+            if (toolCall.name) {
+              env.KIGO_TOOL_NAME = toolCall.name;
+            }
+
             try {
-              const args = JSON.parse(toolCall.arguments);
               const result = await tool.execute(args);
               yield { type: 'tool_output', data: { id: toolCall.id, result } };
               this.messages.push({
@@ -137,6 +153,22 @@ export class Agent {
                 content: `Error: ${errorMsg}`,
                 toolCallId: toolCall.id,
               });
+            } finally {
+              if (prevSession === undefined) {
+                delete env.KIGO_SESSION_ID;
+              } else {
+                env.KIGO_SESSION_ID = prevSession;
+              }
+              if (prevToolCallId === undefined) {
+                delete env.KIGO_TOOL_CALL_ID;
+              } else {
+                env.KIGO_TOOL_CALL_ID = prevToolCallId;
+              }
+              if (prevToolName === undefined) {
+                delete env.KIGO_TOOL_NAME;
+              } else {
+                env.KIGO_TOOL_NAME = prevToolName;
+              }
             }
           }
 
