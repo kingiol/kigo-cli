@@ -9,6 +9,7 @@ import { runInteractive } from './interactive.js';
 import { configCommands } from './commands/config.js';
 import { authCommands } from './commands/auth.js';
 import { mcpCommands } from './commands/mcp.js';
+import { lspCommands } from './commands/lsp.js';
 import { readFileSync } from 'fs';
 
 const program = new Command();
@@ -53,5 +54,6 @@ program
 configCommands(program);
 authCommands(program);
 mcpCommands(program);
+lspCommands(program);
 
 program.parse();

@@ -13,7 +13,9 @@
       "@kigo/mcp": ["../../packages/mcp/src/index.ts"],
       "@kigo/mcp/*": ["../../packages/mcp/src/*"],
       "@kigo/auth": ["../../packages/auth/src/index.ts"],
-      "@kigo/auth/*": ["../../packages/auth/src/*"]
+      "@kigo/auth/*": ["../../packages/auth/src/*"],
+      "@kigo/lsp": ["../../packages/lsp/src/index.ts"],
+      "@kigo/lsp/*": ["../../packages/lsp/src/*"]
     }
   },
   "include": ["src/**/*"],

@@ -1,0 +1,33 @@
+{
+  "name": "@kigo/lsp",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./server.js": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    }
+  },
+  "bin": {
+    "kigo-lsp": "./dist/server.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "lint": "eslint src/**/*.ts"
+  },
+  "dependencies": {
+    "@kigo/core": "workspace:*",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0"
+  }
+}
