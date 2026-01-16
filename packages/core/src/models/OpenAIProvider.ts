@@ -14,6 +14,8 @@ export interface OpenAIProviderOptions {
   apiKey: string;
   baseURL?: string;
   model?: string;
+  defaultHeaders?: Record<string, string>;
+  defaultQuery?: Record<string, string>;
 }
 
 export class OpenAIProvider extends BaseProvider {
@@ -25,6 +27,8 @@ export class OpenAIProvider extends BaseProvider {
     this.client = new OpenAI({
       apiKey: options.apiKey,
       baseURL: options.baseURL,
+      defaultHeaders: options.defaultHeaders,
+      defaultQuery: options.defaultQuery,
     });
     this.defaultModel = options.model || 'gpt-4o';
   }
@@ -36,9 +40,11 @@ export class OpenAIProvider extends BaseProvider {
       model,
       messages: this.formatMessages(options.messages),
       tools: options.tools,
+      tool_choice: options.toolChoice,
       stream: true,
       max_tokens: options.maxTokens,
       temperature: options.temperature,
+      response_format: options.responseFormat,
     });
 
     for await (const chunk of stream) {
@@ -72,9 +78,11 @@ export class OpenAIProvider extends BaseProvider {
       model,
       messages: this.formatMessages(options.messages),
       tools: options.tools,
+      tool_choice: options.toolChoice,
       stream: false,
       max_tokens: options.maxTokens,
       temperature: options.temperature,
+      response_format: options.responseFormat,
     });
 
     const choice = response.choices[0];

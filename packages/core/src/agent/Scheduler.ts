@@ -34,6 +34,10 @@ export class AgentScheduler {
     return `session_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }
 
+  private generateTraceId(): string {
+    return `trace_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+  }
+
   getSessionId(): string {
     return this.sessionId;
   }
@@ -47,24 +51,34 @@ export class AgentScheduler {
     }
 
     const events: StreamingEvent[] = [];
+    const traceId = this.generateTraceId();
+    let spanCounter = 0;
 
     try {
       for await (const event of this.agent.run(input)) {
-        events.push(event);
+        const enrichedEvent: StreamingEvent = {
+          ...event,
+          meta: {
+            traceId,
+            spanId: `span_${spanCounter++}`,
+            timestamp: Date.now(),
+          },
+        };
+        events.push(enrichedEvent);
 
-        if (event.type === 'tool_call') {
-          const approved = await this.runHooks('beforeToolCall', event.data);
+        if (enrichedEvent.type === 'tool_call') {
+          const approved = await this.runHooks('beforeToolCall', enrichedEvent.data);
           if (!approved) {
             yield { type: 'error', data: 'Tool call rejected by hook' };
             continue;
           }
         }
 
-        if (event.type === 'tool_output') {
-          await this.runHooks('afterToolCall', event.data);
+        if (enrichedEvent.type === 'tool_output') {
+          await this.runHooks('afterToolCall', enrichedEvent.data);
         }
 
-        yield event;
+        yield enrichedEvent;
       }
 
       // After message hook

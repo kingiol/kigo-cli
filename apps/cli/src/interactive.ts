@@ -286,10 +286,11 @@ export async function runInteractive(
   const provider = configManager.getProvider();
   const apiKey = configManager.getApiKey();
   const baseUrl = configManager.getBaseUrl();
+  const azureApiVersion = configManager.getAzureApiVersion();
 
-  if (!apiKey) {
+  if (!apiKey && provider !== 'ollama') {
     console.error(
-      chalk.red('No API key found. Please set OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable.')
+      chalk.red(`No API key found for provider "${provider}". Please set an API key environment variable or config.`)
     );
     process.exit(1);
   }
@@ -300,11 +301,13 @@ export async function runInteractive(
     apiKey,
     baseURL: baseUrl,
     model: modelName,
+    azureApiVersion,
   });
 
   // Create session
   const session = new Session(options.session);
   const sessionId = session.getId();
+  const sessionHistory = await session.getMessages();
 
   // Combine built-in tools with MCP tools
   const allTools = [...registry.getAll(), ...mcpManager.getTools()];
@@ -316,6 +319,10 @@ export async function runInteractive(
     tools: allTools,
     sessionId,
   });
+  if (sessionHistory.length > 0) {
+    agent.loadMessages(sessionHistory);
+  }
+  let lastSavedMessageIndex = sessionHistory.length;
 
   // Create scheduler
   const scheduler = new AgentScheduler(agent, {
@@ -594,9 +601,6 @@ export async function runInteractive(
       return;
     }
 
-    // Save user message
-    await session.saveMessage({ role: 'user', content: input });
-
     // Run agent
     display.reset();
     console.log();
@@ -609,6 +613,7 @@ export async function runInteractive(
     });
 
     try {
+      let lastUsage: any = undefined;
       const toolCallNameMap = new Map<string, string>();
 
       // Start spinner
@@ -659,6 +664,10 @@ export async function runInteractive(
             process.stdout.write(chalk.red(`\nError: ${event.data}\n`));
           }
         }
+
+        if (event.type === 'done') {
+          lastUsage = event.data?.usage;
+        }
       }
 
       // Stop spinner if still running (e.g. at the end)
@@ -674,13 +683,18 @@ export async function runInteractive(
         console.log(display.render());
       }
 
-      // Save assistant messages
+      // Persist new messages in order
       const messages = agent.getMessages();
-      for (const msg of messages) {
-        if (msg.role === 'assistant') {
-          await session.saveMessage(msg);
-        }
+      if (messages.length > lastSavedMessageIndex) {
+        const newMessages = messages.slice(lastSavedMessageIndex);
+        await session.saveMessages(newMessages);
+        lastSavedMessageIndex = messages.length;
       }
+
+      if (lastUsage) {
+        session.recordUsage(lastUsage);
+      }
+      session.updateContextTokens(session.getContextTokenCount());
 
       // Update status line
       const usage: SessionUsage = session.getUsage() as SessionUsage;

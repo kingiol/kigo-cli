@@ -11,6 +11,8 @@ export interface ChatOptions {
   maxTokens?: number;
   temperature?: number;
   reasoningEffort?: string;
+  toolChoice?: any;
+  responseFormat?: any;
 }
 
 export interface ChatResponse {

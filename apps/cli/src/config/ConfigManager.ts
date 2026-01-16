@@ -138,7 +138,6 @@ export class ConfigManager {
       perplexity: 'PERPLEXITYAI_API_KEY',
       fireworks_ai: 'FIREWORKS_AI_API_KEY',
       cloudflare: 'CLOUDFLARE_API_KEY',
-      ollama: 'OLLAMA_BASE_URL',
     };
 
     const envVar = envVarMap[provider];
@@ -156,6 +155,15 @@ export class ConfigManager {
       anthropic: 'ANTHROPIC_BASE_URL',
       azure: 'AZURE_API_BASE',
       cohere: 'COHERE_API_BASE',
+      openrouter: 'OPENROUTER_BASE_URL',
+      together_ai: 'TOGETHERAI_BASE_URL',
+      deepinfra: 'DEEPINFRA_BASE_URL',
+      groq: 'GROQ_BASE_URL',
+      mistral: 'MISTRAL_BASE_URL',
+      perplexity: 'PERPLEXITYAI_BASE_URL',
+      fireworks_ai: 'FIREWORKS_AI_BASE_URL',
+      cloudflare: 'CLOUDFLARE_BASE_URL',
+      ollama: 'OLLAMA_BASE_URL',
     };
 
     const envVar = envVarMap[provider];
@@ -164,6 +172,11 @@ export class ConfigManager {
     }
 
     return this.config?.model.baseUrl;
+  }
+
+  getAzureApiVersion(): string | undefined {
+    const envVersion = process.env.AZURE_API_VERSION;
+    return envVersion || this.config?.model.azureApiVersion;
   }
 
   getReasoningEffort(): string | undefined {

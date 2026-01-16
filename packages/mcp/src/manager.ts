@@ -26,8 +26,16 @@ export class MCPManager {
         this.clients.set(serverConfig.name, client);
 
         // Register tools from this server
+        const allowed = new Set(serverConfig.allowedTools || []);
+        const blocked = new Set(serverConfig.blockedTools || []);
         const mcpTools = client.getTools();
         for (const mcpTool of mcpTools) {
+          if (blocked.has(mcpTool.name)) {
+            continue;
+          }
+          if (allowed.size > 0 && !allowed.has(mcpTool.name)) {
+            continue;
+          }
           const tool: MCPToolWrapper = {
             name: mcpTool.name,
             description: mcpTool.description,

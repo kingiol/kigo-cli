@@ -9,6 +9,7 @@ import {
   type ChatResponse,
   type StreamChunk,
 } from './BaseProvider.js';
+import type { Message } from '../types.js';
 
 export interface AnthropicProviderOptions {
   apiKey: string;
@@ -30,17 +31,13 @@ export class AnthropicProvider extends BaseProvider {
   }
 
   async *chat(options: ChatOptions): AsyncIterable<StreamChunk> {
-    const systemMessage = options.messages.find(m => m.role === 'system');
-    const messages = options.messages.filter(m => m.role !== 'system');
+    const { system, messages } = this.formatAnthropicMessages(options.messages);
 
     const stream = await this.client.messages.create({
       model: this.defaultModel,
       max_tokens: options.maxTokens || 4096,
-      messages: messages.map(m => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      })),
-      system: systemMessage?.content,
+      messages,
+      system,
       tools: options.tools?.map(t => ({
         name: t.function.name,
         description: t.function.description,
@@ -107,17 +104,13 @@ export class AnthropicProvider extends BaseProvider {
   }
 
   async chatNonStream(options: ChatOptions): Promise<ChatResponse> {
-    const systemMessage = options.messages.find(m => m.role === 'system');
-    const messages = options.messages.filter(m => m.role !== 'system');
+    const { system, messages } = this.formatAnthropicMessages(options.messages);
 
     const response = await this.client.messages.create({
       model: this.defaultModel,
       max_tokens: options.maxTokens || 4096,
-      messages: messages.map(m => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      })),
-      system: systemMessage?.content,
+      messages,
+      system,
       tools: options.tools?.map(t => ({
         name: t.function.name,
         description: t.function.description,
@@ -148,5 +141,77 @@ export class AnthropicProvider extends BaseProvider {
         totalTokens: response.usage.input_tokens + response.usage.output_tokens,
       },
     };
+  }
+
+  private formatAnthropicMessages(messages: Message[]): {
+    system?: string;
+    messages: Anthropic.Messages.MessageParam[];
+  } {
+    const systemParts = messages.filter(m => m.role === 'system').map(m => m.content).filter(Boolean);
+    const system = systemParts.length > 0 ? systemParts.join('\n') : undefined;
+
+    const formatted: Anthropic.Messages.MessageParam[] = [];
+
+    for (const message of messages) {
+      if (message.role === 'system') {
+        continue;
+      }
+
+      if (message.role === 'tool') {
+        if (message.toolCallId) {
+          formatted.push({
+            role: 'user',
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: message.toolCallId,
+                content: message.content,
+              },
+            ],
+          });
+        } else {
+          formatted.push({
+            role: 'user',
+            content: message.content,
+          });
+        }
+        continue;
+      }
+
+      if (message.role === 'assistant' && message.toolCalls?.length) {
+        const contentBlocks: Anthropic.Messages.ContentBlock[] = [];
+        if (message.content) {
+          contentBlocks.push({ type: 'text', text: message.content, citations: [] });
+        }
+        for (const toolCall of message.toolCalls) {
+          let input: any = {};
+          if (toolCall.arguments) {
+            try {
+              input = JSON.parse(toolCall.arguments);
+            } catch {
+              input = { raw: toolCall.arguments };
+            }
+          }
+          contentBlocks.push({
+            type: 'tool_use',
+            id: toolCall.id,
+            name: toolCall.name,
+            input,
+          });
+        }
+        formatted.push({
+          role: 'assistant',
+          content: contentBlocks,
+        });
+        continue;
+      }
+
+      formatted.push({
+        role: message.role as 'user' | 'assistant',
+        content: message.content,
+      });
+    }
+
+    return { system, messages: formatted };
   }
 }

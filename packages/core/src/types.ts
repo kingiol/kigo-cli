@@ -12,6 +12,11 @@ export interface Tool {
 export interface StreamingEvent {
   type: 'text_delta' | 'tool_call' | 'tool_output' | 'done' | 'error';
   data: any;
+  meta?: {
+    traceId: string;
+    spanId: string;
+    timestamp: number;
+  };
 }
 
 export interface Message {

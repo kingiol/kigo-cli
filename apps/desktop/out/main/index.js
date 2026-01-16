@@ -6284,6 +6284,7 @@ ZodUnion.create;
 ZodIntersection.create;
 ZodTuple.create;
 const recordType = ZodRecord.create;
+const lazyType = ZodLazy.create;
 const enumType = ZodEnum.create;
 ZodPromise.create;
 ZodOptional.create;
@@ -6440,6 +6441,13 @@ let Agent$3 = class Agent2 {
     this.options = options2;
     this.maxTokens = options2.maxTokens || 4096;
     this.temperature = options2.temperature || 0.7;
+    this.maxRetries = options2.maxRetries ?? 2;
+    this.retryDelayMs = options2.retryDelayMs ?? 500;
+    this.timeoutMs = options2.timeoutMs ?? 0;
+    this.parallelToolCalls = options2.parallelToolCalls ?? false;
+    this.allowedTools = new Set(options2.allowedTools || []);
+    this.blockedTools = new Set(options2.blockedTools || []);
+    this.toolRateLimit = options2.toolRateLimit;
     if (options2.tools) {
       options2.tools.forEach((tool2) => this.tools.set(tool2.name, tool2));
     }
@@ -6448,6 +6456,14 @@ let Agent$3 = class Agent2 {
   messages = [];
   maxTokens;
   temperature;
+  maxRetries;
+  retryDelayMs;
+  timeoutMs;
+  parallelToolCalls;
+  allowedTools;
+  blockedTools;
+  toolRateLimit;
+  toolCallTimes = /* @__PURE__ */ new Map();
   registerTool(tool2) {
     this.tools.set(tool2.name, tool2);
   }
@@ -6458,101 +6474,257 @@ let Agent$3 = class Agent2 {
     return Array.from(this.tools.values());
   }
   async *run(input) {
-    this.messages.push({ role: "user", content: input });
-    const fullMessages = [
-      { role: "system", content: this.options.systemPrompt },
-      ...this.messages
-    ];
-    try {
-      const response2 = await this.options.provider.chat({
-        messages: fullMessages,
-        tools: Array.from(this.tools.values()).map((t2) => ({
-          type: "function",
-          function: {
-            name: t2.name,
-            description: t2.description,
-            parameters: t2.parameters
+    if (input) {
+      this.messages.push({ role: "user", content: input });
+    }
+    while (true) {
+      const fullMessages = [
+        { role: "system", content: this.options.systemPrompt },
+        ...this.messages
+      ];
+      try {
+        const response2 = await this.createStreamWithRetry(fullMessages);
+        let currentContent = "";
+        let currentToolCalls = [];
+        let lastUsage = void 0;
+        let finishReason;
+        for await (const chunk of response2) {
+          if (chunk.usage) {
+            lastUsage = chunk.usage;
           }
-        })),
-        stream: true,
-        maxTokens: this.maxTokens,
-        temperature: this.temperature
-      });
-      let currentContent = "";
-      let currentToolCalls = [];
-      for await (const chunk of response2) {
-        if (chunk.delta?.content) {
-          currentContent += chunk.delta.content;
-          yield { type: "text_delta", data: chunk.delta.content };
-        }
-        if (chunk.delta?.tool_calls) {
-          for (const call2 of chunk.delta.tool_calls) {
-            let existing;
-            if (call2.index !== void 0) {
-              existing = currentToolCalls.find((c2) => c2.index === call2.index);
-            } else {
-              existing = currentToolCalls.find((c2) => c2.id === call2.id);
-            }
-            if (existing) {
-              existing.arguments += call2.arguments || "";
-              if (call2.id && !existing.id) existing.id = call2.id;
-              if (call2.name && !existing.name) existing.name = call2.name;
-            } else {
-              currentToolCalls.push({
-                index: call2.index,
-                id: call2.id,
-                name: call2.name,
-                arguments: call2.arguments || ""
-              });
+          if (chunk.delta?.content) {
+            currentContent += chunk.delta.content;
+            yield { type: "text_delta", data: chunk.delta.content };
+          }
+          if (chunk.delta?.tool_calls) {
+            for (const call2 of chunk.delta.tool_calls) {
+              let existing;
+              if (call2.index !== void 0) {
+                existing = currentToolCalls.find((c2) => c2.index === call2.index);
+              } else {
+                existing = currentToolCalls.find((c2) => c2.id === call2.id);
+              }
+              if (existing) {
+                existing.arguments += call2.arguments || "";
+                if (call2.id && !existing.id) existing.id = call2.id;
+                if (call2.name && !existing.name) existing.name = call2.name;
+              } else {
+                currentToolCalls.push({
+                  index: call2.index,
+                  id: call2.id,
+                  name: call2.name,
+                  arguments: call2.arguments || ""
+                });
+              }
             }
           }
+          if (chunk.finish_reason) {
+            finishReason = chunk.finish_reason;
+          }
         }
-        if (chunk.finish_reason === "tool_calls" && currentToolCalls.length > 0) {
+        if (currentToolCalls.length > 0) {
           this.messages.push({
             role: "assistant",
             content: currentContent,
             toolCalls: currentToolCalls
           });
-          for (const toolCall of currentToolCalls) {
-            yield { type: "tool_call", data: toolCall };
-            const tool2 = this.tools.get(toolCall.name);
-            if (!tool2) {
-              yield {
-                type: "tool_output",
-                data: { id: toolCall.id, error: `Tool not found: ${toolCall.name}` }
-              };
-              continue;
-            }
-            try {
-              const args = JSON.parse(toolCall.arguments);
-              const result = await tool2.execute(args);
-              yield { type: "tool_output", data: { id: toolCall.id, result } };
-              this.messages.push({
-                role: "tool",
-                content: result,
-                toolCallId: toolCall.id
-              });
-            } catch (error2) {
-              const errorMsg = error2 instanceof Error ? error2.message : String(error2);
-              yield { type: "tool_output", data: { id: toolCall.id, error: errorMsg } };
-              this.messages.push({
-                role: "tool",
-                content: `Error: ${errorMsg}`,
-                toolCallId: toolCall.id
-              });
+          if (this.parallelToolCalls) {
+            yield* this.executeToolCallsParallel(currentToolCalls);
+          } else {
+            for (const toolCall of currentToolCalls) {
+              yield* this.executeToolCall(toolCall);
             }
           }
-          yield* this.run("");
-          return;
+          continue;
         }
-        if (chunk.finish_reason === "stop") {
+        if (finishReason) {
           this.messages.push({ role: "assistant", content: currentContent });
-          yield { type: "done", data: { usage: chunk.usage } };
+          yield { type: "done", data: { usage: lastUsage, finishReason } };
         }
+        return;
+      } catch (error2) {
+        const errorMsg = error2 instanceof Error ? error2.message : String(error2);
+        yield { type: "error", data: errorMsg };
+        return;
       }
+    }
+  }
+  async createStreamWithRetry(fullMessages) {
+    let attempt = 0;
+    let lastError = null;
+    while (attempt <= this.maxRetries) {
+      try {
+        const responsePromise = this.options.provider.chat({
+          messages: fullMessages,
+          tools: Array.from(this.tools.values()).map((t2) => ({
+            type: "function",
+            function: {
+              name: t2.name,
+              description: t2.description,
+              parameters: t2.parameters
+            }
+          })),
+          stream: true,
+          maxTokens: this.maxTokens,
+          temperature: this.temperature,
+          toolChoice: this.options.toolChoice,
+          responseFormat: this.options.responseFormat
+        });
+        if (this.timeoutMs > 0) {
+          let timeoutId = null;
+          const timeoutPromise = new Promise((_2, reject) => {
+            timeoutId = setTimeout(
+              () => reject(new Error("Provider request timed out")),
+              this.timeoutMs
+            );
+          });
+          const response2 = await Promise.race([responsePromise, timeoutPromise]);
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+          }
+          return response2;
+        }
+        return await responsePromise;
+      } catch (error2) {
+        lastError = error2 instanceof Error ? error2 : new Error(String(error2));
+        if (attempt >= this.maxRetries) {
+          throw lastError;
+        }
+        const delay = this.retryDelayMs * Math.pow(2, attempt);
+        await new Promise((resolve2) => setTimeout(resolve2, delay));
+        attempt += 1;
+      }
+    }
+    throw lastError || new Error("Failed to start stream");
+  }
+  isToolAllowed(name) {
+    if (this.blockedTools.has(name)) return false;
+    if (this.allowedTools.size === 0) return true;
+    return this.allowedTools.has(name);
+  }
+  isToolRateLimited(name) {
+    if (!this.toolRateLimit) return false;
+    const now = Date.now();
+    const times = this.toolCallTimes.get(name) || [];
+    const recent = times.filter((t2) => now - t2 < this.toolRateLimit.windowMs);
+    if (recent.length >= this.toolRateLimit.maxCalls) {
+      this.toolCallTimes.set(name, recent);
+      return true;
+    }
+    recent.push(now);
+    this.toolCallTimes.set(name, recent);
+    return false;
+  }
+  async *executeToolCallsParallel(toolCalls) {
+    const tasks2 = toolCalls.map(async (toolCall) => {
+      const events2 = [];
+      for await (const event of this.executeToolCall(toolCall, { useEnv: false })) {
+        events2.push(event);
+      }
+      return events2;
+    });
+    const settled = await Promise.all(tasks2);
+    for (const events2 of settled) {
+      for (const event of events2) {
+        yield event;
+      }
+    }
+  }
+  async *executeToolCall(toolCall, options2 = {}) {
+    yield { type: "tool_call", data: toolCall };
+    if (!this.isToolAllowed(toolCall.name)) {
+      yield {
+        type: "tool_output",
+        data: { id: toolCall.id, error: `Tool not allowed: ${toolCall.name}` }
+      };
+      this.messages.push({
+        role: "tool",
+        content: `Error: Tool not allowed: ${toolCall.name}`,
+        toolCallId: toolCall.id
+      });
+      return;
+    }
+    if (this.isToolRateLimited(toolCall.name)) {
+      yield {
+        type: "tool_output",
+        data: { id: toolCall.id, error: `Tool rate limit exceeded: ${toolCall.name}` }
+      };
+      this.messages.push({
+        role: "tool",
+        content: `Error: Tool rate limit exceeded: ${toolCall.name}`,
+        toolCallId: toolCall.id
+      });
+      return;
+    }
+    const tool2 = this.tools.get(toolCall.name);
+    if (!tool2) {
+      yield {
+        type: "tool_output",
+        data: { id: toolCall.id, error: `Tool not found: ${toolCall.name}` }
+      };
+      this.messages.push({
+        role: "tool",
+        content: `Error: Tool not found: ${toolCall.name}`,
+        toolCallId: toolCall.id
+      });
+      return;
+    }
+    const useEnv = options2.useEnv !== false;
+    const env = process.env;
+    const prevSession = env.KIGO_SESSION_ID;
+    const prevToolCallId = env.KIGO_TOOL_CALL_ID;
+    const prevToolName = env.KIGO_TOOL_NAME;
+    if (useEnv) {
+      if (this.options.sessionId) {
+        env.KIGO_SESSION_ID = this.options.sessionId;
+      }
+      if (toolCall.id) {
+        env.KIGO_TOOL_CALL_ID = toolCall.id;
+      }
+      if (toolCall.name) {
+        env.KIGO_TOOL_NAME = toolCall.name;
+      }
+    }
+    try {
+      let args;
+      try {
+        args = toolCall.arguments ? JSON.parse(toolCall.arguments) : {};
+      } catch (error2) {
+        throw new Error(`Invalid tool arguments for ${toolCall.name}: ${String(error2)}`);
+      }
+      const result = await tool2.execute(args);
+      yield { type: "tool_output", data: { id: toolCall.id, result } };
+      this.messages.push({
+        role: "tool",
+        content: result,
+        toolCallId: toolCall.id
+      });
     } catch (error2) {
       const errorMsg = error2 instanceof Error ? error2.message : String(error2);
-      yield { type: "error", data: errorMsg };
+      yield { type: "tool_output", data: { id: toolCall.id, error: errorMsg } };
+      this.messages.push({
+        role: "tool",
+        content: `Error: ${errorMsg}`,
+        toolCallId: toolCall.id
+      });
+    } finally {
+      if (useEnv) {
+        if (prevSession === void 0) {
+          delete env.KIGO_SESSION_ID;
+        } else {
+          env.KIGO_SESSION_ID = prevSession;
+        }
+        if (prevToolCallId === void 0) {
+          delete env.KIGO_TOOL_CALL_ID;
+        } else {
+          env.KIGO_TOOL_CALL_ID = prevToolCallId;
+        }
+        if (prevToolName === void 0) {
+          delete env.KIGO_TOOL_NAME;
+        } else {
+          env.KIGO_TOOL_NAME = prevToolName;
+        }
+      }
     }
   }
   getMessages() {
@@ -6583,6 +6755,9 @@ class AgentScheduler {
   generateSessionId() {
     return `session_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }
+  generateTraceId() {
+    return `trace_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+  }
   getSessionId() {
     return this.sessionId;
   }
@@ -6593,20 +6768,30 @@ class AgentScheduler {
       return;
     }
     const events2 = [];
+    const traceId = this.generateTraceId();
+    let spanCounter = 0;
     try {
       for await (const event of this.agent.run(input)) {
-        events2.push(event);
-        if (event.type === "tool_call") {
-          const approved2 = await this.runHooks("beforeToolCall", event.data);
+        const enrichedEvent = {
+          ...event,
+          meta: {
+            traceId,
+            spanId: `span_${spanCounter++}`,
+            timestamp: Date.now()
+          }
+        };
+        events2.push(enrichedEvent);
+        if (enrichedEvent.type === "tool_call") {
+          const approved2 = await this.runHooks("beforeToolCall", enrichedEvent.data);
           if (!approved2) {
             yield { type: "error", data: "Tool call rejected by hook" };
             continue;
           }
         }
-        if (event.type === "tool_output") {
-          await this.runHooks("afterToolCall", event.data);
+        if (enrichedEvent.type === "tool_output") {
+          await this.runHooks("afterToolCall", enrichedEvent.data);
         }
-        yield event;
+        yield enrichedEvent;
       }
       await this.runHooks("afterMessage", events2);
     } catch (error2) {
@@ -96983,7 +97168,9 @@ class OpenAIProvider extends BaseProvider {
     super();
     this.client = new OpenAI({
       apiKey: options2.apiKey,
-      baseURL: options2.baseURL
+      baseURL: options2.baseURL,
+      defaultHeaders: options2.defaultHeaders,
+      defaultQuery: options2.defaultQuery
     });
     this.defaultModel = options2.model || "gpt-4o";
   }
@@ -96993,9 +97180,11 @@ class OpenAIProvider extends BaseProvider {
       model,
       messages: this.formatMessages(options2.messages),
       tools: options2.tools,
+      tool_choice: options2.toolChoice,
       stream: true,
       max_tokens: options2.maxTokens,
-      temperature: options2.temperature
+      temperature: options2.temperature,
+      response_format: options2.responseFormat
     });
     for await (const chunk of stream2) {
       const delta = chunk.choices[0]?.delta;
@@ -97024,9 +97213,11 @@ class OpenAIProvider extends BaseProvider {
       model,
       messages: this.formatMessages(options2.messages),
       tools: options2.tools,
+      tool_choice: options2.toolChoice,
       stream: false,
       max_tokens: options2.maxTokens,
-      temperature: options2.temperature
+      temperature: options2.temperature,
+      response_format: options2.responseFormat
     });
     const choice = response2.choices[0];
     return {
@@ -101505,16 +101696,12 @@ class AnthropicProvider extends BaseProvider {
     this.defaultModel = options2.model || "claude-sonnet-4-20250514";
   }
   async *chat(options2) {
-    const systemMessage = options2.messages.find((m2) => m2.role === "system");
-    const messages = options2.messages.filter((m2) => m2.role !== "system");
+    const { system, messages } = this.formatAnthropicMessages(options2.messages);
     const stream2 = await this.client.messages.create({
       model: this.defaultModel,
       max_tokens: options2.maxTokens || 4096,
-      messages: messages.map((m2) => ({
-        role: m2.role,
-        content: m2.content
-      })),
-      system: systemMessage?.content,
+      messages,
+      system,
       tools: options2.tools?.map((t2) => ({
         name: t2.function.name,
         description: t2.function.description,
@@ -101577,16 +101764,12 @@ class AnthropicProvider extends BaseProvider {
     }
   }
   async chatNonStream(options2) {
-    const systemMessage = options2.messages.find((m2) => m2.role === "system");
-    const messages = options2.messages.filter((m2) => m2.role !== "system");
+    const { system, messages } = this.formatAnthropicMessages(options2.messages);
     const response2 = await this.client.messages.create({
       model: this.defaultModel,
       max_tokens: options2.maxTokens || 4096,
-      messages: messages.map((m2) => ({
-        role: m2.role,
-        content: m2.content
-      })),
-      system: systemMessage?.content,
+      messages,
+      system,
       tools: options2.tools?.map((t2) => ({
         name: t2.function.name,
         description: t2.function.description,
@@ -101615,10 +101798,83 @@ class AnthropicProvider extends BaseProvider {
       }
     };
   }
+  formatAnthropicMessages(messages) {
+    const systemParts = messages.filter((m2) => m2.role === "system").map((m2) => m2.content).filter(Boolean);
+    const system = systemParts.length > 0 ? systemParts.join("\n") : void 0;
+    const formatted = [];
+    for (const message of messages) {
+      if (message.role === "system") {
+        continue;
+      }
+      if (message.role === "tool") {
+        if (message.toolCallId) {
+          formatted.push({
+            role: "user",
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: message.toolCallId,
+                content: message.content
+              }
+            ]
+          });
+        } else {
+          formatted.push({
+            role: "user",
+            content: message.content
+          });
+        }
+        continue;
+      }
+      if (message.role === "assistant" && message.toolCalls?.length) {
+        const contentBlocks = [];
+        if (message.content) {
+          contentBlocks.push({ type: "text", text: message.content, citations: [] });
+        }
+        for (const toolCall of message.toolCalls) {
+          let input = {};
+          if (toolCall.arguments) {
+            try {
+              input = JSON.parse(toolCall.arguments);
+            } catch {
+              input = { raw: toolCall.arguments };
+            }
+          }
+          contentBlocks.push({
+            type: "tool_use",
+            id: toolCall.id,
+            name: toolCall.name,
+            input
+          });
+        }
+        formatted.push({
+          role: "assistant",
+          content: contentBlocks
+        });
+        continue;
+      }
+      formatted.push({
+        role: message.role,
+        content: message.content
+      });
+    }
+    return { system, messages: formatted };
+  }
 }
 class ProviderFactory {
   static create(config) {
-    const { provider: provider2, apiKey, baseURL, model } = config;
+    const { provider: provider2, apiKey, baseURL, model, azureApiVersion } = config;
+    const openAICompatibleProviders = /* @__PURE__ */ new Set([
+      "openrouter",
+      "together_ai",
+      "deepinfra",
+      "groq",
+      "mistral",
+      "perplexity",
+      "fireworks_ai",
+      "cloudflare",
+      "ollama"
+    ]);
     switch (provider2) {
       case "openai":
         if (!apiKey) throw new Error("OpenAI API key is required");
@@ -101626,13 +101882,42 @@ class ProviderFactory {
       case "anthropic":
         if (!apiKey) throw new Error("Anthropic API key is required");
         return new AnthropicProvider({ apiKey, baseURL, model });
+      case "azure":
+        if (!apiKey) throw new Error("Azure API key is required");
+        if (!baseURL) throw new Error("Azure API base URL is required");
+        return new OpenAIProvider({
+          apiKey,
+          baseURL,
+          model,
+          defaultQuery: azureApiVersion ? { "api-version": azureApiVersion } : void 0
+        });
       default:
+        if (openAICompatibleProviders.has(provider2)) {
+          if (!baseURL) {
+            throw new Error(`Base URL is required for provider: ${provider2}`);
+          }
+          const key2 = apiKey || (provider2 === "ollama" ? "ollama" : void 0);
+          if (!key2) {
+            throw new Error(`API key is required for provider: ${provider2}`);
+          }
+          return new OpenAIProvider({ apiKey: key2, baseURL, model });
+        }
         throw new Error(`Unsupported provider: ${provider2}`);
     }
   }
   static getProviderFromEnv() {
     if (process.env.ANTHROPIC_API_KEY) return "anthropic";
     if (process.env.OPENAI_API_KEY) return "openai";
+    if (process.env.OPENROUTER_API_KEY) return "openrouter";
+    if (process.env.TOGETHERAI_API_KEY) return "together_ai";
+    if (process.env.DEEPINFRA_API_KEY) return "deepinfra";
+    if (process.env.GROQ_API_KEY) return "groq";
+    if (process.env.MISTRAL_API_KEY) return "mistral";
+    if (process.env.PERPLEXITYAI_API_KEY) return "perplexity";
+    if (process.env.FIREWORKS_AI_API_KEY) return "fireworks_ai";
+    if (process.env.CLOUDFLARE_API_KEY) return "cloudflare";
+    if (process.env.AZURE_API_KEY) return "azure";
+    if (process.env.OLLAMA_BASE_URL) return "ollama";
     return "openai";
   }
 }
@@ -102452,8 +102737,16 @@ class MCPManager {
         const client2 = new MCPClient(serverConfig);
         await client2.connect();
         this.clients.set(serverConfig.name, client2);
+        const allowed = new Set(serverConfig.allowedTools || []);
+        const blocked = new Set(serverConfig.blockedTools || []);
         const mcpTools = client2.getTools();
         for (const mcpTool of mcpTools) {
+          if (blocked.has(mcpTool.name)) {
+            continue;
+          }
+          if (allowed.size > 0 && !allowed.has(mcpTool.name)) {
+            continue;
+          }
           const tool2 = {
             name: mcpTool.name,
             description: mcpTool.description,
@@ -121060,7 +121353,14 @@ var _eval = EvalError;
 var range = RangeError;
 var ref = ReferenceError;
 var syntax = SyntaxError;
-var type$1 = TypeError;
+var type$1;
+var hasRequiredType;
+function requireType() {
+  if (hasRequiredType) return type$1;
+  hasRequiredType = 1;
+  type$1 = TypeError;
+  return type$1;
+}
 var uri = URIError;
 var abs$1 = Math.abs;
 var floor$1 = Math.floor;
@@ -121306,7 +121606,7 @@ function requireCallBindApplyHelpers() {
   if (hasRequiredCallBindApplyHelpers) return callBindApplyHelpers;
   hasRequiredCallBindApplyHelpers = 1;
   var bind3 = functionBind;
-  var $TypeError2 = type$1;
+  var $TypeError2 = requireType();
   var $call2 = requireFunctionCall();
   var $actualApply = requireActualApply();
   callBindApplyHelpers = function callBindBasic(args) {
@@ -121379,7 +121679,7 @@ var $EvalError = _eval;
 var $RangeError = range;
 var $ReferenceError = ref;
 var $SyntaxError = syntax;
-var $TypeError$1 = type$1;
+var $TypeError$1 = requireType();
 var $URIError = uri;
 var abs = abs$1;
 var floor = floor$1;
@@ -121710,7 +122010,7 @@ var GetIntrinsic = getIntrinsic;
 var $defineProperty = GetIntrinsic("%Object.defineProperty%", true);
 var hasToStringTag = requireShams()();
 var hasOwn$3 = hasown;
-var $TypeError = type$1;
+var $TypeError = requireType();
 var toStringTag = hasToStringTag ? Symbol.toStringTag : null;
 var esSetTostringtag = function setToStringTag2(object, value) {
   var overrideIfSet = arguments.length > 2 && !!arguments[2] && arguments[2].force;
@@ -166648,21 +166948,65 @@ ${truncated}`;
     }
   }
 });
-const TODO_FILE = path$d.join(os$1.homedir(), ".kigo", "todos.json");
+const LEGACY_TODO_FILE = path$d.join(os$1.homedir(), ".kigo", "todos.json");
+const TODO_DIR = path$d.join(os$1.homedir(), ".kigo", "todos");
+function getSessionContext() {
+  const sessionId = process.env.KIGO_SESSION_ID || "session_default";
+  const toolCallId = process.env.KIGO_TOOL_CALL_ID || void 0;
+  return { sessionId, toolCallId };
+}
+function sanitizeId(value) {
+  return value.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+function getTodoFile(sessionId) {
+  const safeSessionId = sanitizeId(sessionId);
+  return path$d.join(TODO_DIR, `${safeSessionId}.json`);
+}
 async function ensureTodoDir() {
-  await fs$c.mkdir(path$d.dirname(TODO_FILE), { recursive: true });
+  await fs$c.mkdir(TODO_DIR, { recursive: true });
 }
 async function loadTodos() {
+  const { sessionId } = getSessionContext();
+  const todoFile = getTodoFile(sessionId);
   try {
-    const content = await fs$c.readFile(TODO_FILE, "utf-8");
+    const content = await fs$c.readFile(todoFile, "utf-8");
     return JSON.parse(content);
   } catch {
-    return [];
+    try {
+      const legacyContent = await fs$c.readFile(LEGACY_TODO_FILE, "utf-8");
+      const legacyTodos = JSON.parse(legacyContent);
+      const migrated = (Array.isArray(legacyTodos) ? legacyTodos : []).map(
+        (todo) => ({
+          ...todo,
+          sessionId: todo.sessionId || sessionId
+        })
+      );
+      await ensureTodoDir();
+      await fs$c.writeFile(todoFile, JSON.stringify(migrated, null, 2), "utf-8");
+      return migrated;
+    } catch {
+      return [];
+    }
   }
 }
 async function saveTodos(todos) {
   await ensureTodoDir();
-  await fs$c.writeFile(TODO_FILE, JSON.stringify(todos, null, 2), "utf-8");
+  const { sessionId, toolCallId } = getSessionContext();
+  const now = Date.now();
+  const normalizeTodo = (todo) => ({
+    ...todo,
+    sessionId: todo.sessionId || sessionId,
+    toolCallId: todo.toolCallId || toolCallId,
+    createdAt: todo.createdAt || now,
+    updatedAt: now,
+    children: todo.children ? todo.children.map(normalizeTodo) : void 0
+  });
+  const normalized = todos.map(normalizeTodo);
+  await fs$c.writeFile(
+    getTodoFile(sessionId),
+    JSON.stringify(normalized, null, 2),
+    "utf-8"
+  );
 }
 const STATUS_EMOJI = {
   pending: "⬜",
@@ -166687,36 +167031,44 @@ tool({
       else if (todo.status === "in_progress") inProgress.push(todo);
       else completed.push(todo);
     }
+    const renderTodos = (items, indent) => {
+      for (const todo of items) {
+        lines.push(`${indent}${STATUS_EMOJI[todo.status]} ${todo.content}`);
+        if (todo.children && todo.children.length > 0) {
+          renderTodos(todo.children, `${indent}  `);
+        }
+      }
+    };
     if (inProgress.length > 0) {
       lines.push("\nIn Progress:");
-      for (const todo of inProgress) {
-        lines.push(`  ${STATUS_EMOJI[todo.status]} ${todo.content}`);
-      }
+      renderTodos(inProgress, "  ");
     }
     if (pending.length > 0) {
       lines.push("\nPending:");
-      for (const todo of pending) {
-        lines.push(`  ${STATUS_EMOJI[todo.status]} ${todo.content}`);
-      }
+      renderTodos(pending, "  ");
     }
     if (completed.length > 0) {
       lines.push("\nCompleted:");
-      for (const todo of completed) {
-        lines.push(`  ${STATUS_EMOJI[todo.status]} ${todo.content}`);
-      }
+      renderTodos(completed, "  ");
     }
     return lines.join("\n");
   }
 });
+const todoItemSchema = lazyType(
+  () => objectType({
+    content: stringType(),
+    status: enumType(["pending", "in_progress", "completed"]),
+    priority: stringType(),
+    id: stringType(),
+    sessionId: stringType().optional(),
+    toolCallId: stringType().optional(),
+    createdAt: numberType().optional(),
+    updatedAt: numberType().optional(),
+    children: arrayType(todoItemSchema).optional()
+  })
+);
 const todoWriteSchema = objectType({
-  todos: arrayType(
-    objectType({
-      content: stringType(),
-      status: enumType(["pending", "in_progress", "completed"]),
-      priority: stringType(),
-      id: stringType()
-    })
-  ).describe("Array of todo items")
+  todos: arrayType(todoItemSchema).describe("Array of todo items")
 });
 tool({
   name: "todo_write",
@@ -170162,7 +170514,8 @@ class ChatService {
     const agent2 = new Agent$3({
       provider: provider2,
       systemPrompt: DEFAULT_SYSTEM_PROMPT,
-      tools: [...builtinTools, ...mcpTools]
+      tools: [...builtinTools, ...mcpTools],
+      sessionId
     });
     agent2.loadMessages(history);
     const scheduler = new AgentScheduler(agent2);
