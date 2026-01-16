@@ -9,7 +9,7 @@ import { Agent, AgentScheduler, Session, ProviderFactory } from '@kigo/core';
 import { StreamingDisplayManager } from './display/StreamingDisplay.js';
 import { StatusLine, type SessionUsage } from './display/StatusLine.js';
 import { getConfigManager } from './config/ConfigManager.js';
-import { registry, SkillLoader } from '@kigo/tools';
+import { SubAgentRuntime, registry, SkillLoader } from '@kigo/tools';
 import { MCPManager } from '@kigo/mcp';
 import { ToolRenderer } from './display/ToolRenderer.js';
 import { SlashCommandRegistry } from './commands/slash/Registry.js';
@@ -243,6 +243,7 @@ export interface InteractiveOptions {
   version?: string;
 }
 
+
 export async function runInteractive(
   configManager: Awaited<ReturnType<typeof getConfigManager>>,
   options: InteractiveOptions
@@ -309,8 +310,29 @@ export async function runInteractive(
   const sessionId = session.getId();
   const sessionHistory = await session.getMessages();
 
+  const subAgentRuntime = new SubAgentRuntime({
+    allowNestedDefault: false,
+    getSessionId: () => sessionId
+  });
+
   // Combine built-in tools with MCP tools
   const allTools = [...registry.getAll(), ...mcpManager.getTools()];
+
+  subAgentRuntime.createManager(sessionId, {
+    tools: allTools,
+    defaultProvider: llmProvider,
+    providerFactory: (profile) =>
+      ProviderFactory.create({
+        provider,
+        apiKey,
+        baseURL: baseUrl,
+        model: profile.model || modelName,
+        azureApiVersion,
+      }),
+    defaultSystemPrompt: 'You are a specialized sub-agent. Be concise and return only what was asked.',
+    maxConcurrent: 2,
+    maxDepth: 2,
+  });
 
   // Create agent
   const agent = new Agent({

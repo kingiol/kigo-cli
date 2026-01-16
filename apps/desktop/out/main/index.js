@@ -6277,6 +6277,7 @@ var ZodFirstPartyTypeKind;
 const stringType = ZodString.create;
 const numberType = ZodNumber.create;
 const booleanType = ZodBoolean.create;
+const anyType = ZodAny.create;
 ZodNever.create;
 const arrayType = ZodArray.create;
 const objectType = ZodObject.create;
@@ -6441,6 +6442,7 @@ let Agent$3 = class Agent2 {
     this.options = options2;
     this.maxTokens = options2.maxTokens || 4096;
     this.temperature = options2.temperature || 0.7;
+    this.subAgentDepth = options2.subAgentDepth;
     this.maxRetries = options2.maxRetries ?? 2;
     this.retryDelayMs = options2.retryDelayMs ?? 500;
     this.timeoutMs = options2.timeoutMs ?? 0;
@@ -6456,6 +6458,7 @@ let Agent$3 = class Agent2 {
   messages = [];
   maxTokens;
   temperature;
+  subAgentDepth;
   maxRetries;
   retryDelayMs;
   timeoutMs;
@@ -6674,6 +6677,7 @@ let Agent$3 = class Agent2 {
     const prevSession = env.KIGO_SESSION_ID;
     const prevToolCallId = env.KIGO_TOOL_CALL_ID;
     const prevToolName = env.KIGO_TOOL_NAME;
+    const prevSubAgentDepth = env.KIGO_SUB_AGENT_DEPTH;
     if (useEnv) {
       if (this.options.sessionId) {
         env.KIGO_SESSION_ID = this.options.sessionId;
@@ -6683,6 +6687,9 @@ let Agent$3 = class Agent2 {
       }
       if (toolCall.name) {
         env.KIGO_TOOL_NAME = toolCall.name;
+      }
+      if (this.subAgentDepth !== void 0) {
+        env.KIGO_SUB_AGENT_DEPTH = String(this.subAgentDepth);
       }
     }
     try {
@@ -6723,6 +6730,11 @@ let Agent$3 = class Agent2 {
           delete env.KIGO_TOOL_NAME;
         } else {
           env.KIGO_TOOL_NAME = prevToolName;
+        }
+        if (prevSubAgentDepth === void 0) {
+          delete env.KIGO_SUB_AGENT_DEPTH;
+        } else {
+          env.KIGO_SUB_AGENT_DEPTH = prevSubAgentDepth;
         }
       }
     }
@@ -6823,6 +6835,191 @@ class AgentScheduler {
   }
   getAgent() {
     return this.agent;
+  }
+}
+class Semaphore {
+  constructor(maxConcurrent) {
+    this.maxConcurrent = maxConcurrent;
+  }
+  inflight = 0;
+  queue = [];
+  async acquire() {
+    if (this.inflight < this.maxConcurrent) {
+      this.inflight += 1;
+      return;
+    }
+    await new Promise((resolve2) => this.queue.push(resolve2));
+    this.inflight += 1;
+  }
+  release() {
+    this.inflight = Math.max(0, this.inflight - 1);
+    const next2 = this.queue.shift();
+    if (next2) {
+      next2();
+    }
+  }
+}
+class SubAgentManager {
+  tools;
+  defaultProvider;
+  providerFactory;
+  defaultSystemPrompt;
+  profiles;
+  semaphore;
+  maxDepth;
+  constructor(options2) {
+    this.tools = options2.tools;
+    this.defaultProvider = options2.defaultProvider;
+    this.providerFactory = options2.providerFactory;
+    this.defaultSystemPrompt = options2.defaultSystemPrompt || "You are a specialized sub-agent.";
+    this.profiles = /* @__PURE__ */ new Map();
+    this.maxDepth = options2.maxDepth ?? 2;
+    this.semaphore = new Semaphore(options2.maxConcurrent ?? 2);
+    for (const profile of options2.profiles || []) {
+      this.profiles.set(profile.id, profile);
+    }
+  }
+  registerProfile(profile) {
+    this.profiles.set(profile.id, profile);
+  }
+  removeProfile(profileId) {
+    return this.profiles.delete(profileId);
+  }
+  listProfiles() {
+    return Array.from(this.profiles.values());
+  }
+  async runSubAgent(options2) {
+    const depth2 = options2.depth ?? 1;
+    if (depth2 > this.maxDepth) {
+      throw new Error(`Sub-agent depth limit exceeded (max ${this.maxDepth})`);
+    }
+    const start = Date.now();
+    await this.semaphore.acquire();
+    try {
+      const profile = options2.profileId ? this.profiles.get(options2.profileId) : void 0;
+      const mergedProfile = {
+        id: profile?.id || "default",
+        systemPrompt: options2.systemPrompt ?? profile?.systemPrompt,
+        model: options2.model ?? profile?.model,
+        tools: options2.tools ?? profile?.tools,
+        allowedTools: options2.allowedTools ?? profile?.allowedTools,
+        blockedTools: this.mergeToolLists(profile?.blockedTools, options2.blockedTools),
+        maxTokens: options2.maxTokens ?? profile?.maxTokens,
+        temperature: options2.temperature ?? profile?.temperature,
+        maxRetries: options2.maxRetries ?? profile?.maxRetries,
+        retryDelayMs: options2.retryDelayMs ?? profile?.retryDelayMs,
+        timeoutMs: options2.timeoutMs ?? profile?.timeoutMs,
+        parallelToolCalls: options2.parallelToolCalls ?? profile?.parallelToolCalls,
+        toolChoice: options2.toolChoice ?? profile?.toolChoice,
+        responseFormat: options2.responseFormat ?? profile?.responseFormat,
+        toolRateLimit: options2.toolRateLimit ?? profile?.toolRateLimit
+      };
+      const systemPrompt = this.buildSystemPrompt(
+        mergedProfile.systemPrompt || this.defaultSystemPrompt,
+        options2.context
+      );
+      const provider2 = this.getProvider(mergedProfile);
+      const selectedTools = this.selectTools(
+        mergedProfile.tools,
+        mergedProfile.allowedTools,
+        mergedProfile.blockedTools
+      );
+      const agent2 = new Agent$3({
+        provider: provider2,
+        systemPrompt,
+        tools: selectedTools,
+        maxTokens: mergedProfile.maxTokens,
+        temperature: mergedProfile.temperature,
+        maxRetries: mergedProfile.maxRetries,
+        retryDelayMs: mergedProfile.retryDelayMs,
+        timeoutMs: mergedProfile.timeoutMs,
+        parallelToolCalls: mergedProfile.parallelToolCalls,
+        toolChoice: mergedProfile.toolChoice,
+        responseFormat: mergedProfile.responseFormat,
+        toolRateLimit: mergedProfile.toolRateLimit,
+        subAgentDepth: depth2
+      });
+      const scheduler = new AgentScheduler(agent2, { sessionId: `subagent_${Date.now()}` });
+      const events2 = [];
+      let output = "";
+      let usage;
+      const run = async () => {
+        for await (const event of scheduler.run(options2.task)) {
+          events2.push(event);
+          if (event.type === "text_delta") {
+            output += event.data;
+          } else if (event.type === "done") {
+            usage = event.data?.usage;
+          } else if (event.type === "error") {
+            throw new Error(event.data);
+          }
+        }
+      };
+      if (mergedProfile.timeoutMs && mergedProfile.timeoutMs > 0) {
+        await this.runWithTimeout(run, mergedProfile.timeoutMs);
+      } else {
+        await run();
+      }
+      if (!output) {
+        const messages = agent2.getMessages();
+        const lastAssistant = [...messages].reverse().find((m2) => m2.role === "assistant");
+        if (lastAssistant?.content) {
+          output = lastAssistant.content;
+        }
+      }
+      return {
+        output,
+        usage,
+        durationMs: Date.now() - start,
+        messages: agent2.getMessages(),
+        events: options2.returnEvents ? events2 : void 0
+      };
+    } finally {
+      this.semaphore.release();
+    }
+  }
+  mergeToolLists(primary, secondary) {
+    if (!primary && !secondary) return void 0;
+    return [...primary || [], ...secondary || []];
+  }
+  buildSystemPrompt(basePrompt, context) {
+    if (!context) return basePrompt;
+    return `${basePrompt}
+
+Context:
+${context}`;
+  }
+  selectTools(toolNames, allowedTools, blockedTools) {
+    let selected = this.tools;
+    if (toolNames && toolNames.length > 0) {
+      const nameSet = new Set(toolNames);
+      selected = selected.filter((tool2) => nameSet.has(tool2.name));
+    }
+    if (allowedTools && allowedTools.length > 0) {
+      const allowed = new Set(allowedTools);
+      selected = selected.filter((tool2) => allowed.has(tool2.name));
+    }
+    if (blockedTools && blockedTools.length > 0) {
+      const blocked = new Set(blockedTools);
+      selected = selected.filter((tool2) => !blocked.has(tool2.name));
+    }
+    return selected;
+  }
+  getProvider(profile) {
+    if (this.providerFactory) {
+      return this.providerFactory(profile);
+    }
+    return this.defaultProvider;
+  }
+  async runWithTimeout(run, timeoutMs) {
+    let timeoutId = null;
+    const timeout = new Promise((_2, reject) => {
+      timeoutId = setTimeout(() => reject(new Error("Sub-agent timed out")), timeoutMs);
+    });
+    await Promise.race([run(), timeout]);
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
 }
 var commonjsGlobal = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : {};
@@ -121353,14 +121550,7 @@ var _eval = EvalError;
 var range = RangeError;
 var ref = ReferenceError;
 var syntax = SyntaxError;
-var type$1;
-var hasRequiredType;
-function requireType() {
-  if (hasRequiredType) return type$1;
-  hasRequiredType = 1;
-  type$1 = TypeError;
-  return type$1;
-}
+var type$1 = TypeError;
 var uri = URIError;
 var abs$1 = Math.abs;
 var floor$1 = Math.floor;
@@ -121606,7 +121796,7 @@ function requireCallBindApplyHelpers() {
   if (hasRequiredCallBindApplyHelpers) return callBindApplyHelpers;
   hasRequiredCallBindApplyHelpers = 1;
   var bind3 = functionBind;
-  var $TypeError2 = requireType();
+  var $TypeError2 = type$1;
   var $call2 = requireFunctionCall();
   var $actualApply = requireActualApply();
   callBindApplyHelpers = function callBindBasic(args) {
@@ -121679,7 +121869,7 @@ var $EvalError = _eval;
 var $RangeError = range;
 var $ReferenceError = ref;
 var $SyntaxError = syntax;
-var $TypeError$1 = requireType();
+var $TypeError$1 = type$1;
 var $URIError = uri;
 var abs = abs$1;
 var floor = floor$1;
@@ -122010,7 +122200,7 @@ var GetIntrinsic = getIntrinsic;
 var $defineProperty = GetIntrinsic("%Object.defineProperty%", true);
 var hasToStringTag = requireShams()();
 var hasOwn$3 = hasown;
-var $TypeError = requireType();
+var $TypeError = type$1;
 var toStringTag = hasToStringTag ? Symbol.toStringTag : null;
 var esSetTostringtag = function setToStringTag2(object, value) {
   var overrideIfSet = arguments.length > 2 && !!arguments[2] && arguments[2].force;
@@ -170416,6 +170606,107 @@ tool({
     return skill.content;
   }
 });
+const SUB_AGENT_TOOL_NAME = "sub_agent_run";
+const subAgentSchema = objectType({
+  task: stringType().min(1),
+  context: stringType().optional(),
+  profile: stringType().optional(),
+  systemPrompt: stringType().optional(),
+  model: stringType().optional(),
+  tools: arrayType(stringType()).optional(),
+  allowedTools: arrayType(stringType()).optional(),
+  blockedTools: arrayType(stringType()).optional(),
+  maxTokens: numberType().int().min(1).optional(),
+  temperature: numberType().min(0).max(2).optional(),
+  timeoutMs: numberType().int().min(1).optional(),
+  maxRetries: numberType().int().min(0).optional(),
+  retryDelayMs: numberType().int().min(0).optional(),
+  parallelToolCalls: booleanType().optional(),
+  toolChoice: anyType().optional(),
+  responseFormat: anyType().optional(),
+  toolRateLimit: objectType({
+    maxCalls: numberType().int().min(1),
+    windowMs: numberType().int().min(1)
+  }).optional(),
+  allowNested: booleanType().default(false),
+  returnEvents: booleanType().default(false)
+});
+function registerSubAgentTool(getManager, options2 = {}) {
+  if (registry.has(SUB_AGENT_TOOL_NAME)) {
+    return;
+  }
+  registry.register({
+    name: SUB_AGENT_TOOL_NAME,
+    description: "Run a specialized sub-agent to handle a sub-task.",
+    schema: subAgentSchema,
+    execute: async (params) => {
+      const manager = getManager();
+      if (!manager) {
+        throw new Error("Sub-agent manager not initialized");
+      }
+      const allowNested = params.allowNested ?? options2.allowNestedDefault ?? false;
+      const parentDepth = Number(process.env.KIGO_SUB_AGENT_DEPTH || 0);
+      const nextDepth = parentDepth + 1;
+      const blockedTools = allowNested ? params.blockedTools : [...params.blockedTools || [], SUB_AGENT_TOOL_NAME];
+      const result = await manager.runSubAgent({
+        task: params.task,
+        context: params.context,
+        profileId: params.profile,
+        systemPrompt: params.systemPrompt,
+        model: params.model,
+        tools: params.tools,
+        allowedTools: params.allowedTools,
+        blockedTools,
+        maxTokens: params.maxTokens,
+        temperature: params.temperature,
+        timeoutMs: params.timeoutMs,
+        maxRetries: params.maxRetries,
+        retryDelayMs: params.retryDelayMs,
+        parallelToolCalls: params.parallelToolCalls,
+        toolChoice: params.toolChoice,
+        responseFormat: params.responseFormat,
+        toolRateLimit: params.toolRateLimit,
+        depth: nextDepth,
+        returnEvents: params.returnEvents
+      });
+      return JSON.stringify({
+        output: result.output,
+        usage: result.usage,
+        durationMs: result.durationMs,
+        events: result.events
+      });
+    }
+  });
+}
+class SubAgentRuntime {
+  managers = /* @__PURE__ */ new Map();
+  getSessionId;
+  constructor(options2 = {}) {
+    this.getSessionId = options2.getSessionId || (() => process.env.KIGO_SESSION_ID);
+    registerSubAgentTool(
+      () => {
+        const sessionId = this.getSessionId();
+        if (!sessionId) return null;
+        return this.managers.get(sessionId) || null;
+      },
+      { allowNestedDefault: options2.allowNestedDefault ?? false }
+    );
+  }
+  createManager(sessionId, options2) {
+    const manager = new SubAgentManager(options2);
+    this.managers.set(sessionId, manager);
+    return manager;
+  }
+  getManager(sessionId) {
+    return this.managers.get(sessionId);
+  }
+  removeManager(sessionId) {
+    this.managers.delete(sessionId);
+  }
+  clear() {
+    this.managers.clear();
+  }
+}
 const BASE_DIR = path__default.join(os__default.homedir(), ".kigo", "desktop-audit");
 function getAuditPath(sessionId) {
   return path__default.join(BASE_DIR, `${sessionId}.jsonl`);
@@ -170484,6 +170775,7 @@ class ChatService {
     this.getWebContents = getWebContents;
   }
   sessions = /* @__PURE__ */ new Map();
+  subAgentRuntime = new SubAgentRuntime({ allowNestedDefault: false });
   async start(input, config, existingSessionId) {
     const webContents = this.getWebContents();
     if (!webContents) throw new Error("No active window");
@@ -170511,6 +170803,19 @@ class ChatService {
     });
     const builtinTools = registry.getAll().map((tool2) => wrapTool(tool2, "builtin"));
     const mcpTools = mcpManager.getTools().map((tool2) => wrapTool(tool2, "mcp"));
+    this.subAgentRuntime.createManager(sessionId, {
+      tools: [...builtinTools, ...mcpTools],
+      defaultProvider: provider2,
+      providerFactory: (profile) => ProviderFactory.create({
+        provider: config.model.provider,
+        apiKey: config.model.apiKey,
+        baseURL: config.model.baseUrl,
+        model: profile.model || config.model.name
+      }),
+      defaultSystemPrompt: "You are a specialized sub-agent. Be concise and return only what was asked.",
+      maxConcurrent: 2,
+      maxDepth: 2
+    });
     const agent2 = new Agent$3({
       provider: provider2,
       systemPrompt: DEFAULT_SYSTEM_PROMPT,
@@ -170576,6 +170881,7 @@ class ChatService {
         await mcpManager.close();
         sessionStore.close();
         this.sessions.delete(sessionId);
+        this.subAgentRuntime.removeManager(sessionId);
       }
     })();
     return sessionId;

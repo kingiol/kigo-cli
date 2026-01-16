@@ -11,6 +11,7 @@ export interface AgentOptions {
   maxTokens?: number;
   temperature?: number;
   sessionId?: string;
+  subAgentDepth?: number;
   maxRetries?: number;
   retryDelayMs?: number;
   timeoutMs?: number;
@@ -30,6 +31,7 @@ export class Agent {
   private messages: Message[] = [];
   private maxTokens: number;
   private temperature: number;
+  private subAgentDepth?: number;
   private maxRetries: number;
   private retryDelayMs: number;
   private timeoutMs: number;
@@ -42,6 +44,7 @@ export class Agent {
   constructor(private options: AgentOptions) {
     this.maxTokens = options.maxTokens || 4096;
     this.temperature = options.temperature || 0.7;
+    this.subAgentDepth = options.subAgentDepth;
     this.maxRetries = options.maxRetries ?? 2;
     this.retryDelayMs = options.retryDelayMs ?? 500;
     this.timeoutMs = options.timeoutMs ?? 0;
@@ -304,6 +307,7 @@ export class Agent {
     const prevSession = env.KIGO_SESSION_ID;
     const prevToolCallId = env.KIGO_TOOL_CALL_ID;
     const prevToolName = env.KIGO_TOOL_NAME;
+    const prevSubAgentDepth = env.KIGO_SUB_AGENT_DEPTH;
 
     if (useEnv) {
       if (this.options.sessionId) {
@@ -314,6 +318,9 @@ export class Agent {
       }
       if (toolCall.name) {
         env.KIGO_TOOL_NAME = toolCall.name;
+      }
+      if (this.subAgentDepth !== undefined) {
+        env.KIGO_SUB_AGENT_DEPTH = String(this.subAgentDepth);
       }
     }
 
@@ -356,6 +363,11 @@ export class Agent {
           delete env.KIGO_TOOL_NAME;
         } else {
           env.KIGO_TOOL_NAME = prevToolName;
+        }
+        if (prevSubAgentDepth === undefined) {
+          delete env.KIGO_SUB_AGENT_DEPTH;
+        } else {
+          env.KIGO_SUB_AGENT_DEPTH = prevSubAgentDepth;
         }
       }
     }

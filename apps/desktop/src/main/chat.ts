@@ -2,7 +2,7 @@ import type { WebContents } from 'electron';
 import { Agent, AgentScheduler, Session, type StreamingEvent } from '@kigo/core';
 import { ProviderFactory } from '@kigo/core';
 import { MCPManager } from '@kigo/mcp';
-import { registry } from '@kigo/tools';
+import { SubAgentRuntime, registry } from '@kigo/tools';
 import '@kigo/tools';
 import type { KigoConfig } from '../../../cli/src/config/configSchema.js';
 import { IPC_CHANNELS } from '../shared/ipc.js';
@@ -71,6 +71,7 @@ type ChatSession = {
 
 export class ChatService {
   private sessions = new Map<string, ChatSession>();
+  private subAgentRuntime = new SubAgentRuntime({ allowNestedDefault: false });
 
   constructor(private getWebContents: () => WebContents | null) {}
 
@@ -109,6 +110,20 @@ export class ChatService {
 
     const builtinTools = registry.getAll().map((tool) => wrapTool(tool, 'builtin'));
     const mcpTools = mcpManager.getTools().map((tool) => wrapTool(tool, 'mcp'));
+    this.subAgentRuntime.createManager(sessionId, {
+      tools: [...builtinTools, ...mcpTools],
+      defaultProvider: provider,
+      providerFactory: (profile) =>
+        ProviderFactory.create({
+          provider: config.model.provider,
+          apiKey: config.model.apiKey,
+          baseURL: config.model.baseUrl,
+          model: profile.model || config.model.name
+        }),
+      defaultSystemPrompt: 'You are a specialized sub-agent. Be concise and return only what was asked.',
+      maxConcurrent: 2,
+      maxDepth: 2
+    });
 
     const agent = new Agent({
       provider,
@@ -179,6 +194,7 @@ export class ChatService {
         await mcpManager.close();
         sessionStore.close();
         this.sessions.delete(sessionId);
+        this.subAgentRuntime.removeManager(sessionId);
       }
     })();
 
