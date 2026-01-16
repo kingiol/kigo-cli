@@ -5,6 +5,8 @@
 import chalk from 'chalk';
 import { ToolRenderer } from './ToolRenderer.js';
 
+const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
+
 export interface StreamingEvent {
   type: 'text_delta' | 'tool_call' | 'tool_output' | 'done' | 'error';
   data: any;
@@ -109,40 +111,67 @@ export class StreamingDisplayManager {
   }
 
   private renderMarkdown(text: string): string {
-    let rendered = text;
+    const lines = text.split(/\r?\n/);
+    const outputLines: string[] = [];
+    const width = getWrapWidth();
+    let inCodeBlock = false;
+    let codeLang = 'code';
 
-    // Code blocks
-    rendered = rendered.replace(/```(\w+)?\n([\s\S]*?)```/g, (_, lang, code) => {
-      const langName = lang || 'code';
-      return `\n${chalk.cyan(langName)}:\n${chalk.gray(code)}\n`;
-    });
+    for (const line of lines) {
+      if (line.startsWith('```')) {
+        if (!inCodeBlock) {
+          codeLang = line.slice(3).trim() || 'code';
+          outputLines.push(chalk.cyan(`${codeLang}:`));
+          inCodeBlock = true;
+        } else {
+          inCodeBlock = false;
+        }
+        continue;
+      }
 
-    // Inline code
-    rendered = rendered.replace(/`([^`]+)`/g, (_, code) => {
-      return chalk.cyan(`\`${code}\``);
-    });
+      if (inCodeBlock) {
+        outputLines.push(chalk.gray(line));
+        continue;
+      }
 
-    // Bold
-    rendered = rendered.replace(/\*\*([^*]+)\*\*/g, (_, text) => {
-      return chalk.bold(text);
-    });
+      if (!line.trim()) {
+        outputLines.push('');
+        continue;
+      }
 
-    // Italic
-    rendered = rendered.replace(/\*([^*]+)\*/g, (_, text) => {
-      return chalk.italic(text);
-    });
+      const indentMatch = line.match(/^\s+/);
+      const indent = indentMatch ? indentMatch[0] : '';
+      const content = line.slice(indent.length);
 
-    // Headers
-    rendered = rendered.replace(/^### (.+)$/gm, (_, text) => {
-      return chalk.bold(text);
-    });
+      const headerMatch = content.match(/^(#{1,6})\s+(.+)$/);
+      if (headerMatch) {
+        const headerText = headerMatch[2];
+        outputLines.push(wrapWithPrefix(indent, chalk.bold(headerText), width));
+        continue;
+      }
 
-    // Links
-    rendered = rendered.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) => {
-      return chalk.blue.underline(text) + chalk.dim(` (${url})`);
-    });
+      const quoteMatch = content.match(/^>\s+(.+)$/);
+      if (quoteMatch) {
+        const quoteText = renderInlineMarkdown(quoteMatch[1]);
+        const prefix = `${indent}${chalk.dim('|')} `;
+        outputLines.push(wrapWithPrefix(prefix, quoteText, width));
+        continue;
+      }
 
-    return rendered;
+      const listMatch = content.match(/^([-*+]|\d+\.)\s+(.+)$/);
+      if (listMatch) {
+        const bullet = listMatch[1];
+        const listText = renderInlineMarkdown(listMatch[2]);
+        const prefix = `${indent}${chalk.dim(bullet)} `;
+        outputLines.push(wrapWithPrefix(prefix, listText, width));
+        continue;
+      }
+
+      const formatted = renderInlineMarkdown(content);
+      outputLines.push(wrapWithPrefix(indent, formatted, width));
+    }
+
+    return outputLines.join('\n');
   }
 
   reset(): void {
@@ -158,4 +187,87 @@ export class StreamingDisplayManager {
   getPendingToolCalls(): number {
     return this.pendingToolCalls;
   }
+}
+
+function renderInlineMarkdown(text: string): string {
+  let rendered = text;
+
+  rendered = rendered.replace(/`([^`]+)`/g, (_, code) => chalk.cyan(`\`${code}\``));
+  rendered = rendered.replace(/\*\*([^*]+)\*\*/g, (_, boldText) => chalk.bold(boldText));
+  rendered = rendered.replace(/\*([^*]+)\*/g, (_, italicText) => chalk.italic(italicText));
+  rendered = rendered.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
+    return chalk.blue.underline(label) + chalk.dim(` (${url})`);
+  });
+
+  return rendered;
+}
+
+function stripAnsi(input: string): string {
+  return input.replace(ANSI_PATTERN, '');
+}
+
+function visibleLength(input: string): number {
+  let length = 0;
+  for (const char of stripAnsi(input)) {
+    const code = char.codePointAt(0) ?? 0;
+    length += code <= 0x7f ? 1 : 2;
+  }
+  return length;
+}
+
+function wrapWithPrefix(prefix: string, text: string, width: number): string {
+  if (width <= 0) {
+    return prefix + text;
+  }
+
+  const prefixLen = visibleLength(prefix);
+  const available = Math.max(10, width - prefixLen);
+  if (available <= 0) {
+    return prefix + text;
+  }
+
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = '';
+  let currentLen = 0;
+
+  for (const word of words) {
+    const wordLen = visibleLength(word);
+    if (currentLen === 0) {
+      current = word;
+      currentLen = wordLen;
+      continue;
+    }
+
+    if (currentLen + 1 + wordLen > available) {
+      lines.push(current);
+      current = word;
+      currentLen = wordLen;
+      continue;
+    }
+
+    current += ' ' + word;
+    currentLen += 1 + wordLen;
+  }
+
+  if (currentLen > 0) {
+    lines.push(current);
+  }
+
+  if (lines.length === 0) {
+    return prefix;
+  }
+
+  const continuation = ' '.repeat(prefixLen);
+  return lines
+    .map((line, index) => (index === 0 ? prefix + line : continuation + line))
+    .join('\n');
+}
+
+function getWrapWidth(): number {
+  const columns = process.stdout.columns;
+  if (!columns || columns < 40) {
+    return 80;
+  }
+  return columns - 2;
 }

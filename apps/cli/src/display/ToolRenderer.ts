@@ -1,6 +1,11 @@
 import chalk from 'chalk';
 
 export class ToolRenderer {
+    private static readonly MAX_OUTPUT_LINES = 200;
+    private static readonly MAX_OUTPUT_CHARS = 8000;
+    private static readonly DIFF_OUTPUT_LINES = 400;
+    private static readonly DIFF_OUTPUT_CHARS = 16000;
+
     static renderToolCall(name: string, args: any): string {
         const argsStr = JSON.stringify(args);
         const truncatedArgs = argsStr.length > 100 ? argsStr.substring(0, 100) + '...' : argsStr;
@@ -14,7 +19,8 @@ export class ToolRenderer {
     }
 
     static renderToolOutput(name: string, result: any): string {
-        const outputStr = typeof result === 'string' ? result : JSON.stringify(result);
+        const rawOutput = typeof result === 'string' ? result : JSON.stringify(result);
+        const outputStr = this.truncateOutput(rawOutput, name);
 
         // Colorize diffs for write_file
         let formattedOutput = outputStr;
@@ -49,5 +55,33 @@ export class ToolRenderer {
             output += `     ${icon} ${todo.content}\n`;
         }
         return output;
+    }
+
+    private static truncateOutput(outputStr: string, name: string): string {
+        const isDiffLike = name === 'write_file' || name === 'edit_file';
+        const maxLines = isDiffLike ? this.DIFF_OUTPUT_LINES : this.MAX_OUTPUT_LINES;
+        const maxChars = isDiffLike ? this.DIFF_OUTPUT_CHARS : this.MAX_OUTPUT_CHARS;
+        let lines = outputStr.split('\n');
+        let remainingLines = 0;
+
+        if (lines.length > maxLines) {
+            remainingLines = lines.length - maxLines;
+            lines = lines.slice(0, maxLines);
+        }
+
+        let text = lines.join('\n');
+        let truncated = remainingLines > 0;
+
+        if (text.length > maxChars) {
+            text = text.slice(0, maxChars);
+            truncated = true;
+        }
+
+        if (truncated) {
+            const more = remainingLines > 0 ? `... ${remainingLines} more lines` : '... output truncated';
+            text += `\n${chalk.dim(more)}`;
+        }
+
+        return text;
     }
 }
