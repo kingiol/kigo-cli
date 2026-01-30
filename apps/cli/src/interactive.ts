@@ -206,6 +206,52 @@ function getWrapWidth(): number {
   return columns - 2;
 }
 
+type AnswerQuestionsPayload = {
+  type: "questionnaire";
+  questionnaireId: string;
+  title?: string;
+  instructions?: string;
+  questions: Array<{
+    id: string;
+    text: string;
+    options: string[];
+    allowCustom?: boolean;
+    customLabel?: string;
+  }>;
+};
+
+type QuestionnaireState = {
+  questionnaireId: string;
+  questions: Array<{
+    id: string;
+    text: string;
+    options: string[];
+    allowCustom: boolean;
+    customLabel: string;
+  }>;
+  currentIndex: number;
+  answers: Array<{ questionId: string; selectedIndex?: number; customAnswer?: string }>;
+  awaitingCustom: boolean;
+};
+
+function parseAnswerQuestionsPayload(result: any): AnswerQuestionsPayload | null {
+  const raw = typeof result === "string" ? result : JSON.stringify(result);
+  try {
+    const parsed = JSON.parse(raw);
+    if (
+      parsed &&
+      parsed.type === "questionnaire" &&
+      parsed.questionnaireId &&
+      Array.isArray(parsed.questions)
+    ) {
+      return parsed as AnswerQuestionsPayload;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 // System prompt
 /*
 const KIGO_SYSTEM_TEMPLATE = `You are Kigo, an advanced AI coding assistant and interactive CLI tool.
@@ -589,6 +635,11 @@ export async function runInteractive(
   let pendingSelection: string | null = null;
   let ignoreKeypress = false; // Flag to prevent triggering menu on programmatic writes
   let renderTimeout: NodeJS.Timeout | null = null;
+  let questionnaireState: QuestionnaireState | null = null;
+  let questionnaireNeedsPrompt = false;
+  let questionnaireIntro:
+    | { title?: string; instructions?: string }
+    | null = null;
 
   function renderMenu() {
     // 1. Hide cursor
@@ -788,36 +839,165 @@ export async function runInteractive(
     process.stdout.write(chalk.blue("> "));
   }
 
-  async function handleInput(input: string): Promise<void> {
-    if (pendingSelection) {
-      // User pressed Enter to select a menu item
-      const completion = pendingSelection;
-      pendingSelection = null;
+  function showQuestionnaireIntro(): void {
+    if (!questionnaireIntro) {
+      return;
+    }
+    if (questionnaireIntro.title) {
+      console.log(chalk.cyan.bold(questionnaireIntro.title));
+    }
+    if (questionnaireIntro.instructions) {
+      console.log(chalk.dim(questionnaireIntro.instructions));
+    }
+    questionnaireIntro = null;
+  }
 
-      // Move cursor up to overwrite the line where Enter was pressed
-      process.stdout.write("\x1b[1A");
+  function renderCurrentQuestion(): void {
+    if (!questionnaireState) {
+      return;
+    }
+    const question = questionnaireState.questions[questionnaireState.currentIndex];
+    if (!question) {
+      return;
+    }
+    const customIndex = question.allowCustom ? question.options.length + 1 : null;
+    console.log(
+      chalk.cyan(
+        `\n问题 ${questionnaireState.currentIndex + 1}/${questionnaireState.questions.length}: ${question.text}`
+      )
+    );
+    question.options.forEach((option, index) => {
+      console.log(`  ${index + 1}) ${option}`);
+    });
+    if (question.allowCustom) {
+      console.log(`  ${customIndex}) ${question.customLabel}`);
+    }
+  }
 
-      // Show the completed command in the prompt
-      showPrompt();
+  function showNextPrompt(): void {
+    if (questionnaireState) {
+      showQuestionnaireIntro();
+      if (questionnaireNeedsPrompt) {
+        renderCurrentQuestion();
+        questionnaireNeedsPrompt = false;
+      }
+      process.stdout.write("\x1b[2K\r");
+      let promptText = "回答> ";
+      if (questionnaireState.awaitingCustom) {
+        promptText = "自定义答案> ";
+      } else {
+        const current = questionnaireState.questions[questionnaireState.currentIndex];
+        if (current) {
+          const maxSelection = current.allowCustom
+            ? current.options.length + 1
+            : current.options.length;
+          promptText = `回答(1-${maxSelection})> `;
+        }
+      }
+      process.stdout.write(chalk.blue(promptText));
+      return;
+    }
+    showPrompt();
+  }
 
-      ignoreKeypress = true;
-      rl.write(completion + " ");
-      ignoreKeypress = false;
+  async function submitQuestionnaireAnswers(state: QuestionnaireState): Promise<void> {
+    const tool = registry.get("answer_questions");
+    if (!tool) {
+      console.error(chalk.red("Error: answer_questions tool not available."));
+      questionnaireState = null;
       return;
     }
 
-    if (!input.trim()) {
-      showPrompt();
+    const result = await tool.execute({
+      mode: "submit",
+      questionnaireId: state.questionnaireId,
+      answers: state.answers,
+    });
+
+    questionnaireState = null;
+    await runAgentWithInput(`问卷回答如下：\n${result}`);
+    showNextPrompt();
+  }
+
+  async function handleQuestionnaireInput(input: string): Promise<void> {
+    if (!questionnaireState) {
+      showNextPrompt();
       return;
     }
 
-    // Handle slash commands
-    if (input.startsWith("/")) {
-      await handleSlashCommand(input);
-      showPrompt();
+    const trimmed = input.trim();
+    const question = questionnaireState.questions[questionnaireState.currentIndex];
+    if (!question) {
+      questionnaireState = null;
+      showNextPrompt();
+      return;
+    }
+    const optionCount = question.options.length;
+    const customIndex = question.allowCustom ? optionCount + 1 : null;
+    const maxSelection = customIndex ?? optionCount;
+
+    if (questionnaireState.awaitingCustom) {
+      if (!trimmed) {
+        console.log(chalk.yellow("请输入自定义答案，不能为空。"));
+        showNextPrompt();
+        return;
+      }
+      questionnaireState.answers.push({
+        questionId: question.id,
+        customAnswer: trimmed,
+      });
+      questionnaireState.awaitingCustom = false;
+      questionnaireState.currentIndex += 1;
+      if (questionnaireState.currentIndex >= questionnaireState.questions.length) {
+        await submitQuestionnaireAnswers(questionnaireState);
+        return;
+      }
+      questionnaireNeedsPrompt = true;
+      showNextPrompt();
       return;
     }
 
+    const selection = Number.parseInt(trimmed, 10);
+    if (Number.isNaN(selection)) {
+      console.log(chalk.yellow(`请输入 1-${maxSelection} 之间的数字。`));
+      questionnaireNeedsPrompt = true;
+      showNextPrompt();
+      return;
+    }
+
+    if (selection >= 1 && selection <= optionCount) {
+      questionnaireState.answers.push({
+        questionId: question.id,
+        selectedIndex: selection,
+      });
+      questionnaireState.currentIndex += 1;
+      if (questionnaireState.currentIndex >= questionnaireState.questions.length) {
+        await submitQuestionnaireAnswers(questionnaireState);
+        return;
+      }
+      questionnaireNeedsPrompt = true;
+      showNextPrompt();
+      return;
+    }
+
+    if (customIndex && selection === customIndex) {
+      if (!question.allowCustom) {
+        console.log(chalk.yellow(`该问题不支持自定义答案，请选择 1-${optionCount}。`));
+        questionnaireNeedsPrompt = true;
+        showNextPrompt();
+        return;
+      }
+      questionnaireState.awaitingCustom = true;
+      showNextPrompt();
+      return;
+    }
+
+    console.log(chalk.yellow(`请输入 1-${maxSelection} 之间的数字。`));
+    questionnaireNeedsPrompt = true;
+    showNextPrompt();
+  }
+
+  async function runAgentWithInput(input: string): Promise<void> {
     // Run agent
     display.reset();
     markdownRenderer.reset();
@@ -838,6 +1018,43 @@ export async function runInteractive(
       spinner.start();
 
       for await (const event of scheduler.run(input)) {
+        const toolName =
+          event.type === "tool_output"
+            ? toolCallNameMap.get(event.data.id) || "tool"
+            : null;
+
+        let questionnairePayload: AnswerQuestionsPayload | null = null;
+        let isQuestionnaireOutput = false;
+
+        if (
+          event.type === "tool_output" &&
+          toolName === "answer_questions" &&
+          !event.data.error
+        ) {
+          questionnairePayload = parseAnswerQuestionsPayload(event.data.result);
+          if (questionnairePayload) {
+            isQuestionnaireOutput = true;
+            questionnaireState = {
+              questionnaireId: questionnairePayload.questionnaireId,
+              questions: questionnairePayload.questions.map((q) => ({
+                id: q.id,
+                text: q.text,
+                options: q.options,
+                allowCustom: q.allowCustom ?? true,
+                customLabel: q.customLabel || "自定义",
+              })),
+              currentIndex: 0,
+              answers: [],
+              awaitingCustom: false,
+            };
+            questionnaireNeedsPrompt = true;
+            questionnaireIntro = {
+              title: questionnairePayload.title,
+              instructions: questionnairePayload.instructions,
+            };
+          }
+        }
+
         // Stop spinner when we get an event
         if (spinner.isSpinning) {
           spinner.stop();
@@ -876,14 +1093,21 @@ export async function runInteractive(
             if (pending) {
               process.stdout.write(pending + "\n");
             }
-            // Show tool output
-            const name = toolCallNameMap.get(event.data.id) || "tool";
-            if (event.data.error) {
-              process.stdout.write(chalk.red(`Error: ${event.data.error}\n`));
-            } else {
+
+            if (isQuestionnaireOutput) {
               process.stdout.write(
-                ToolRenderer.renderToolOutput(name, event.data.result)
+                chalk.cyan("\n已收到问卷，请按顺序回答。\n")
               );
+            } else {
+              // Show tool output
+              const name = toolCallNameMap.get(event.data.id) || "tool";
+              if (event.data.error) {
+                process.stdout.write(chalk.red(`Error: ${event.data.error}\n`));
+              } else {
+                process.stdout.write(
+                  ToolRenderer.renderToolOutput(name, event.data.result)
+                );
+              }
             }
 
             // Back to thinking
@@ -952,8 +1176,45 @@ export async function runInteractive(
         )
       );
     }
+  }
 
-    showPrompt();
+  async function handleInput(input: string): Promise<void> {
+    if (questionnaireState) {
+      await handleQuestionnaireInput(input);
+      return;
+    }
+
+    if (pendingSelection) {
+      // User pressed Enter to select a menu item
+      const completion = pendingSelection;
+      pendingSelection = null;
+
+      // Move cursor up to overwrite the line where Enter was pressed
+      process.stdout.write("\x1b[1A");
+
+      // Show the completed command in the prompt
+      showPrompt();
+
+      ignoreKeypress = true;
+      rl.write(completion + " ");
+      ignoreKeypress = false;
+      return;
+    }
+
+    if (!input.trim()) {
+      showNextPrompt();
+      return;
+    }
+
+    // Handle slash commands
+    if (input.startsWith("/")) {
+      await handleSlashCommand(input);
+      showNextPrompt();
+      return;
+    }
+
+    await runAgentWithInput(input);
+    showNextPrompt();
   }
 
   async function handleSlashCommand(input: string): Promise<void> {
@@ -979,7 +1240,7 @@ export async function runInteractive(
   console.log(chalk.dim("AI coding assistant for the terminal"));
   console.log(chalk.dim("Type /help for available commands\n"));
 
-  showPrompt();
+  showNextPrompt();
 
   // Cleanup on exit
   const cleanup = async () => {

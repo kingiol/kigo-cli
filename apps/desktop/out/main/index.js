@@ -5333,6 +5333,113 @@ ZodUnion.create = (types2, params) => {
     ...processCreateParams(params)
   });
 };
+const getDiscriminator = (type2) => {
+  if (type2 instanceof ZodLazy) {
+    return getDiscriminator(type2.schema);
+  } else if (type2 instanceof ZodEffects) {
+    return getDiscriminator(type2.innerType());
+  } else if (type2 instanceof ZodLiteral) {
+    return [type2.value];
+  } else if (type2 instanceof ZodEnum) {
+    return type2.options;
+  } else if (type2 instanceof ZodNativeEnum) {
+    return util$x.objectValues(type2.enum);
+  } else if (type2 instanceof ZodDefault) {
+    return getDiscriminator(type2._def.innerType);
+  } else if (type2 instanceof ZodUndefined) {
+    return [void 0];
+  } else if (type2 instanceof ZodNull) {
+    return [null];
+  } else if (type2 instanceof ZodOptional) {
+    return [void 0, ...getDiscriminator(type2.unwrap())];
+  } else if (type2 instanceof ZodNullable) {
+    return [null, ...getDiscriminator(type2.unwrap())];
+  } else if (type2 instanceof ZodBranded) {
+    return getDiscriminator(type2.unwrap());
+  } else if (type2 instanceof ZodReadonly) {
+    return getDiscriminator(type2.unwrap());
+  } else if (type2 instanceof ZodCatch) {
+    return getDiscriminator(type2._def.innerType);
+  } else {
+    return [];
+  }
+};
+class ZodDiscriminatedUnion extends ZodType {
+  _parse(input) {
+    const { ctx } = this._processInputParams(input);
+    if (ctx.parsedType !== ZodParsedType.object) {
+      addIssueToContext(ctx, {
+        code: ZodIssueCode.invalid_type,
+        expected: ZodParsedType.object,
+        received: ctx.parsedType
+      });
+      return INVALID;
+    }
+    const discriminator = this.discriminator;
+    const discriminatorValue = ctx.data[discriminator];
+    const option = this.optionsMap.get(discriminatorValue);
+    if (!option) {
+      addIssueToContext(ctx, {
+        code: ZodIssueCode.invalid_union_discriminator,
+        options: Array.from(this.optionsMap.keys()),
+        path: [discriminator]
+      });
+      return INVALID;
+    }
+    if (ctx.common.async) {
+      return option._parseAsync({
+        data: ctx.data,
+        path: ctx.path,
+        parent: ctx
+      });
+    } else {
+      return option._parseSync({
+        data: ctx.data,
+        path: ctx.path,
+        parent: ctx
+      });
+    }
+  }
+  get discriminator() {
+    return this._def.discriminator;
+  }
+  get options() {
+    return this._def.options;
+  }
+  get optionsMap() {
+    return this._def.optionsMap;
+  }
+  /**
+   * The constructor of the discriminated union schema. Its behaviour is very similar to that of the normal z.union() constructor.
+   * However, it only allows a union of objects, all of which need to share a discriminator property. This property must
+   * have a different value for each object in the union.
+   * @param discriminator the name of the discriminator property
+   * @param types an array of object schemas
+   * @param params
+   */
+  static create(discriminator, options2, params) {
+    const optionsMap = /* @__PURE__ */ new Map();
+    for (const type2 of options2) {
+      const discriminatorValues = getDiscriminator(type2.shape[discriminator]);
+      if (!discriminatorValues.length) {
+        throw new Error(`A discriminator value for key \`${discriminator}\` could not be extracted from all schema options`);
+      }
+      for (const value of discriminatorValues) {
+        if (optionsMap.has(value)) {
+          throw new Error(`Discriminator property ${String(discriminator)} has duplicate value ${String(value)}`);
+        }
+        optionsMap.set(value, type2);
+      }
+    }
+    return new ZodDiscriminatedUnion({
+      typeName: ZodFirstPartyTypeKind.ZodDiscriminatedUnion,
+      discriminator,
+      options: options2,
+      optionsMap,
+      ...processCreateParams(params)
+    });
+  }
+}
 function mergeValues(a2, b2) {
   const aType = getParsedType(a2);
   const bType = getParsedType(b2);
@@ -6290,10 +6397,12 @@ ZodNever.create;
 const arrayType = ZodArray.create;
 const objectType = ZodObject.create;
 ZodUnion.create;
+const discriminatedUnionType = ZodDiscriminatedUnion.create;
 ZodIntersection.create;
 ZodTuple.create;
 const recordType = ZodRecord.create;
 const lazyType = ZodLazy.create;
+const literalType = ZodLiteral.create;
 const enumType = ZodEnum.create;
 ZodPromise.create;
 ZodOptional.create;
@@ -174402,11 +174511,11 @@ function getSessionContext() {
   const toolCallId = process.env.KIGO_TOOL_CALL_ID || void 0;
   return { sessionId, toolCallId };
 }
-function sanitizeId(value) {
+function sanitizeId$1(value) {
   return value.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 function getTodoFile(sessionId) {
-  const safeSessionId = sanitizeId(sessionId);
+  const safeSessionId = sanitizeId$1(sessionId);
   return path$d.join(TODO_DIR, `${safeSessionId}.json`);
 }
 async function ensureTodoDir() {
@@ -177861,6 +177970,188 @@ tool({
       return `Skill not found: ${name}`;
     }
     return skill.content;
+  }
+});
+const ANSWER_DIR = path$d.join(os$1.homedir(), ".kigo", "answer-questions");
+function getSessionId() {
+  return process.env.KIGO_SESSION_ID || "session_default";
+}
+function sanitizeId(value) {
+  return value.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+function getSessionFile() {
+  const sessionId = sanitizeId(getSessionId());
+  return path$d.join(ANSWER_DIR, `${sessionId}.json`);
+}
+async function ensureAnswerDir() {
+  await fs$c.mkdir(ANSWER_DIR, { recursive: true });
+}
+async function loadSessionData() {
+  const file = getSessionFile();
+  try {
+    const content = await fs$c.readFile(file, "utf-8");
+    const parsed = JSON.parse(content);
+    if (parsed && typeof parsed === "object" && parsed.questionnaires) {
+      return parsed;
+    }
+  } catch {
+  }
+  return { questionnaires: {} };
+}
+async function saveSessionData(data2) {
+  await ensureAnswerDir();
+  await fs$c.writeFile(getSessionFile(), JSON.stringify(data2, null, 2), "utf-8");
+}
+const questionSchema = objectType({
+  id: stringType().optional().describe("Optional question id"),
+  text: stringType().min(1).describe("Question text"),
+  options: arrayType(stringType().min(1)).min(1).max(5).describe("Up to 5 options"),
+  allowCustom: booleanType().optional().default(true),
+  customLabel: stringType().optional().describe("Label for the custom option")
+});
+const askSchema = objectType({
+  mode: literalType("ask"),
+  title: stringType().optional(),
+  instructions: stringType().optional(),
+  questions: arrayType(questionSchema).min(1)
+});
+const answerItemSchema = objectType({
+  questionId: stringType(),
+  selectedIndex: numberType().int().min(1).max(5).optional(),
+  selectedOption: stringType().optional(),
+  customAnswer: stringType().optional()
+}).refine(
+  (value) => value.selectedIndex || value.selectedOption || value.customAnswer,
+  "Provide selectedIndex, selectedOption, or customAnswer"
+);
+const submitSchema = objectType({
+  mode: literalType("submit"),
+  questionnaireId: stringType(),
+  answers: arrayType(answerItemSchema).min(1)
+});
+const answerQuestionsSchema = discriminatedUnionType("mode", [
+  askSchema,
+  submitSchema
+]);
+function formatPrompt(questionnaire) {
+  const lines = [];
+  if (questionnaire.title) {
+    lines.push(questionnaire.title);
+    lines.push("");
+  }
+  lines.push(
+    questionnaire.instructions || "请回答以下问题。每题请选择一个选项编号，或选择“自定义”输入你的答案。"
+  );
+  lines.push("");
+  questionnaire.questions.forEach((question, index2) => {
+    lines.push(`${index2 + 1}. ${question.text}`);
+    question.options.forEach((option, optionIndex) => {
+      lines.push(`   ${optionIndex + 1}) ${option}`);
+    });
+    if (question.allowCustom) {
+      lines.push(`   6) ${question.customLabel || "自定义"}`);
+    }
+    lines.push("");
+  });
+  return lines.join("\n").trim();
+}
+tool({
+  name: "answer_questions",
+  description: "Ask a set of multiple-choice questions (up to 5 options each) with an optional custom answer, and collect responses.",
+  schema: answerQuestionsSchema,
+  execute: async (params) => {
+    if (params.mode === "ask") {
+      const data22 = await loadSessionData();
+      const questionnaireId = `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const questions = params.questions.map((question, index2) => ({
+        id: question.id || `q${index2 + 1}`,
+        text: question.text,
+        options: question.options,
+        allowCustom: question.allowCustom ?? true,
+        customLabel: question.customLabel || "自定义"
+      }));
+      const questionnaire2 = {
+        id: questionnaireId,
+        title: params.title,
+        instructions: params.instructions,
+        questions,
+        createdAt: Date.now()
+      };
+      data22.questionnaires[questionnaireId] = questionnaire2;
+      await saveSessionData(data22);
+      const payload2 = {
+        type: "questionnaire",
+        questionnaireId,
+        title: questionnaire2.title,
+        instructions: questionnaire2.instructions,
+        questions: questionnaire2.questions,
+        prompt: formatPrompt(questionnaire2),
+        responseFormat: {
+          mode: "submit",
+          questionnaireId,
+          answers: questionnaire2.questions.map((question) => ({
+            questionId: question.id,
+            selectedIndex: 1,
+            customAnswer: ""
+          }))
+        }
+      };
+      return JSON.stringify(payload2, null, 2);
+    }
+    const data2 = await loadSessionData();
+    const questionnaire = data2.questionnaires[params.questionnaireId];
+    if (!questionnaire) {
+      return `Questionnaire not found: ${params.questionnaireId}`;
+    }
+    const answerMap = new Map(params.answers.map((answer) => [answer.questionId, answer]));
+    const missing = questionnaire.questions.filter((question) => !answerMap.has(question.id)).map((question) => question.id);
+    if (missing.length > 0) {
+      return `Missing answers for questions: ${missing.join(", ")}`;
+    }
+    const resolved = questionnaire.questions.map((question) => {
+      const answer = answerMap.get(question.id);
+      let resolvedAnswer = "";
+      let source = "option";
+      let optionIndex;
+      if (answer.customAnswer) {
+        if (!question.allowCustom) {
+          return {
+            questionId: question.id,
+            question: question.text,
+            error: "Custom answers are not allowed for this question."
+          };
+        }
+        resolvedAnswer = answer.customAnswer;
+        source = "custom";
+      } else if (answer.selectedIndex) {
+        const index2 = answer.selectedIndex - 1;
+        resolvedAnswer = question.options[index2] || "";
+        optionIndex = answer.selectedIndex;
+      } else if (answer.selectedOption) {
+        resolvedAnswer = answer.selectedOption;
+      }
+      if (!resolvedAnswer) {
+        return {
+          questionId: question.id,
+          question: question.text,
+          error: "Invalid answer selection."
+        };
+      }
+      return {
+        questionId: question.id,
+        question: question.text,
+        answer: resolvedAnswer,
+        source,
+        optionIndex
+      };
+    });
+    const payload = {
+      type: "answers",
+      questionnaireId: questionnaire.id,
+      title: questionnaire.title,
+      answers: resolved
+    };
+    return JSON.stringify(payload, null, 2);
   }
 });
 const SUB_AGENT_TOOL_NAME = "sub_agent_run";

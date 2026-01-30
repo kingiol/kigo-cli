@@ -20,7 +20,16 @@ export class ToolRenderer {
 
     static renderToolOutput(name: string, result: any): string {
         const rawOutput = typeof result === 'string' ? result : JSON.stringify(result);
-        const outputStr = this.truncateOutput(rawOutput, name);
+        let outputStr = rawOutput;
+
+        if (name === 'answer_questions') {
+            const parsed = this.parseAnswerQuestions(rawOutput);
+            if (parsed && parsed.type === 'questionnaire') {
+                outputStr = '已收到问卷，请按顺序回答。';
+            }
+        }
+
+        outputStr = this.truncateOutput(outputStr, name);
 
         // Colorize diffs for write_file
         let formattedOutput = outputStr;
@@ -40,6 +49,15 @@ export class ToolRenderer {
         }).join('\n');
 
         return indentedOutput + '\n';
+    }
+
+    private static parseAnswerQuestions(rawOutput: string): { type?: string } | null {
+        try {
+            const parsed = JSON.parse(rawOutput);
+            return parsed && typeof parsed === 'object' ? parsed : null;
+        } catch {
+            return null;
+        }
     }
 
     private static renderTodoList(todos: any[]): string {
