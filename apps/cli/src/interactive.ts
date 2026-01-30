@@ -915,7 +915,23 @@ export async function runInteractive(
     });
 
     questionnaireState = null;
-    await runAgentWithInput(`问卷回答如下：\n${result}`);
+    const prevSuppress = process.env.KIGO_SUPPRESS_QUESTIONNAIRE_ASK;
+    process.env.KIGO_SUPPRESS_QUESTIONNAIRE_ASK = "1";
+    try {
+      await runAgentWithInput(
+        [
+          "问卷已完成。请基于以下回答继续，不要再次创建问卷，除非用户明确要求补充信息。",
+          "问卷回答如下：",
+          result,
+        ].join("\n"),
+      );
+    } finally {
+      if (prevSuppress === undefined) {
+        delete process.env.KIGO_SUPPRESS_QUESTIONNAIRE_ASK;
+      } else {
+        process.env.KIGO_SUPPRESS_QUESTIONNAIRE_ASK = prevSuppress;
+      }
+    }
     showNextPrompt();
   }
 
