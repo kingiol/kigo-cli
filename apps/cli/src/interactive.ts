@@ -908,11 +908,23 @@ export async function runInteractive(
       return;
     }
 
-    const result = await tool.execute({
-      mode: "submit",
-      questionnaireId: state.questionnaireId,
-      answers: state.answers,
-    });
+    const env = process.env;
+    const prevSession = env.KIGO_SESSION_ID;
+    env.KIGO_SESSION_ID = sessionId;
+    let result: string;
+    try {
+      result = await tool.execute({
+        mode: "submit",
+        questionnaireId: state.questionnaireId,
+        answers: state.answers,
+      });
+    } finally {
+      if (prevSession === undefined) {
+        delete env.KIGO_SESSION_ID;
+      } else {
+        env.KIGO_SESSION_ID = prevSession;
+      }
+    }
 
     questionnaireState = null;
     const prevSuppress = process.env.KIGO_SUPPRESS_QUESTIONNAIRE_ASK;
