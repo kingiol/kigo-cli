@@ -10825,6 +10825,18 @@ function refine(fn, _params = {}) {
 function superRefine(fn) {
   return /* @__PURE__ */ _superRefine(fn);
 }
+const DEFAULT_MODEL_CONFIG = {
+  name: "gpt-4o",
+  provider: "openai"
+};
+const DEFAULT_CLI_CONFIG = {
+  stream: true
+};
+const DEFAULT_SKILLS_CONFIG = {
+  enabled: true,
+  projectSkillsDir: ".kigo/skills",
+  userSkillsDir: "~/.kigo/skills"
+};
 const ModelConfigSchema = object({
   name: string().default("gpt-4o"),
   provider: string().default("openai"),
@@ -10844,9 +10856,9 @@ const MCPServerConfigSchema = object({
   transportType: _enum(["stdio", "sse", "http"]).default("stdio"),
   command: string().optional(),
   args: array(string()).default([]),
-  envVars: record(string()).default({}),
+  envVars: record(string(), string()).default({}),
   url: string().optional(),
-  headers: record(string()).default({}),
+  headers: record(string(), string()).default({}),
   cacheToolsList: boolean().default(true),
   allowedTools: array(string()).optional(),
   blockedTools: array(string()).optional()
@@ -10857,11 +10869,16 @@ const SkillsConfigSchema = object({
   userSkillsDir: string().default("~/.kigo/skills")
 });
 const KigoConfigSchema = object({
-  model: ModelConfigSchema.default({}),
-  cli: CLIConfigSchema.default({}),
+  model: ModelConfigSchema.default(DEFAULT_MODEL_CONFIG),
+  cli: CLIConfigSchema.default(DEFAULT_CLI_CONFIG),
   mcpServers: array(MCPServerConfigSchema).default([]),
-  skills: SkillsConfigSchema.default({})
-}).default({});
+  skills: SkillsConfigSchema.default(DEFAULT_SKILLS_CONFIG)
+}).default({
+  model: DEFAULT_MODEL_CONFIG,
+  cli: DEFAULT_CLI_CONFIG,
+  mcpServers: [],
+  skills: DEFAULT_SKILLS_CONFIG
+});
 function App() {
   const [configSummary, setConfigSummary] = reactExports.useState(null);
   const [config2, setConfig] = reactExports.useState(null);

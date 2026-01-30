@@ -4,6 +4,21 @@
 
 import { z } from 'zod';
 
+const DEFAULT_MODEL_CONFIG = {
+  name: 'gpt-4o',
+  provider: 'openai',
+} as const;
+
+const DEFAULT_CLI_CONFIG = {
+  stream: true,
+} as const;
+
+const DEFAULT_SKILLS_CONFIG = {
+  enabled: true,
+  projectSkillsDir: '.kigo/skills',
+  userSkillsDir: '~/.kigo/skills',
+} as const;
+
 // Model configuration
 export const ModelConfigSchema = z.object({
   name: z.string().default('gpt-4o'),
@@ -28,9 +43,9 @@ export const MCPServerConfigSchema = z.object({
   transportType: z.enum(['stdio', 'sse', 'http']).default('stdio'),
   command: z.string().optional(),
   args: z.array(z.string()).default([]),
-  envVars: z.record(z.string()).default({}),
+  envVars: z.record(z.string(), z.string()).default({}),
   url: z.string().optional(),
-  headers: z.record(z.string()).default({}),
+  headers: z.record(z.string(), z.string()).default({}),
   cacheToolsList: z.boolean().default(true),
   allowedTools: z.array(z.string()).optional(),
   blockedTools: z.array(z.string()).optional(),
@@ -45,11 +60,16 @@ export const SkillsConfigSchema = z.object({
 
 // Main Kigo configuration
 export const KigoConfigSchema = z.object({
-  model: ModelConfigSchema.default({}),
-  cli: CLIConfigSchema.default({}),
+  model: ModelConfigSchema.default(DEFAULT_MODEL_CONFIG),
+  cli: CLIConfigSchema.default(DEFAULT_CLI_CONFIG),
   mcpServers: z.array(MCPServerConfigSchema).default([]),
-  skills: SkillsConfigSchema.default({}),
-}).default({});
+  skills: SkillsConfigSchema.default(DEFAULT_SKILLS_CONFIG),
+}).default({
+  model: DEFAULT_MODEL_CONFIG,
+  cli: DEFAULT_CLI_CONFIG,
+  mcpServers: [],
+  skills: DEFAULT_SKILLS_CONFIG,
+});
 
 // Export types
 export type ModelConfig = z.infer<typeof ModelConfigSchema>;
@@ -60,17 +80,8 @@ export type KigoConfig = z.infer<typeof KigoConfigSchema>;
 
 // Default configuration
 export const DEFAULT_CONFIG: KigoConfig = {
-  model: {
-    name: 'gpt-4o',
-    provider: 'openai',
-  },
-  cli: {
-    stream: true,
-  },
+  model: DEFAULT_MODEL_CONFIG,
+  cli: DEFAULT_CLI_CONFIG,
   mcpServers: [],
-  skills: {
-    enabled: true,
-    projectSkillsDir: '.kigo/skills',
-    userSkillsDir: '~/.kigo/skills',
-  },
+  skills: DEFAULT_SKILLS_CONFIG,
 };

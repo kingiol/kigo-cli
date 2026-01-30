@@ -6529,6 +6529,18 @@ function refine(fn, _params = {}) {
 function superRefine(fn) {
   return /* @__PURE__ */ _superRefine(fn);
 }
+const DEFAULT_MODEL_CONFIG = {
+  name: "gpt-4o",
+  provider: "openai"
+};
+const DEFAULT_CLI_CONFIG = {
+  stream: true
+};
+const DEFAULT_SKILLS_CONFIG = {
+  enabled: true,
+  projectSkillsDir: ".kigo/skills",
+  userSkillsDir: "~/.kigo/skills"
+};
 const ModelConfigSchema = object({
   name: string$2().default("gpt-4o"),
   provider: string$2().default("openai"),
@@ -6548,9 +6560,9 @@ const MCPServerConfigSchema = object({
   transportType: _enum(["stdio", "sse", "http"]).default("stdio"),
   command: string$2().optional(),
   args: array$2(string$2()).default([]),
-  envVars: record(string$2()).default({}),
+  envVars: record(string$2(), string$2()).default({}),
   url: string$2().optional(),
-  headers: record(string$2()).default({}),
+  headers: record(string$2(), string$2()).default({}),
   cacheToolsList: boolean().default(true),
   allowedTools: array$2(string$2()).optional(),
   blockedTools: array$2(string$2()).optional()
@@ -6561,25 +6573,21 @@ const SkillsConfigSchema = object({
   userSkillsDir: string$2().default("~/.kigo/skills")
 });
 const KigoConfigSchema = object({
-  model: ModelConfigSchema.default({}),
-  cli: CLIConfigSchema.default({}),
+  model: ModelConfigSchema.default(DEFAULT_MODEL_CONFIG),
+  cli: CLIConfigSchema.default(DEFAULT_CLI_CONFIG),
   mcpServers: array$2(MCPServerConfigSchema).default([]),
-  skills: SkillsConfigSchema.default({})
-}).default({});
-const DEFAULT_CONFIG = {
-  model: {
-    name: "gpt-4o",
-    provider: "openai"
-  },
-  cli: {
-    stream: true
-  },
+  skills: SkillsConfigSchema.default(DEFAULT_SKILLS_CONFIG)
+}).default({
+  model: DEFAULT_MODEL_CONFIG,
+  cli: DEFAULT_CLI_CONFIG,
   mcpServers: [],
-  skills: {
-    enabled: true,
-    projectSkillsDir: ".kigo/skills",
-    userSkillsDir: "~/.kigo/skills"
-  }
+  skills: DEFAULT_SKILLS_CONFIG
+});
+const DEFAULT_CONFIG = {
+  model: DEFAULT_MODEL_CONFIG,
+  cli: DEFAULT_CLI_CONFIG,
+  mcpServers: [],
+  skills: DEFAULT_SKILLS_CONFIG
 };
 const DEFAULT_CONFIG_PATH = path__default.join(os__default.homedir(), ".kigo", "config.yaml");
 function getConfigPath(configPath) {
@@ -125363,14 +125371,7 @@ var _eval = EvalError;
 var range = RangeError;
 var ref = ReferenceError;
 var syntax = SyntaxError;
-var type$1;
-var hasRequiredType;
-function requireType() {
-  if (hasRequiredType) return type$1;
-  hasRequiredType = 1;
-  type$1 = TypeError;
-  return type$1;
-}
+var type$1 = TypeError;
 var uri = URIError;
 var abs$1 = Math.abs;
 var floor$1 = Math.floor;
@@ -125616,7 +125617,7 @@ function requireCallBindApplyHelpers() {
   if (hasRequiredCallBindApplyHelpers) return callBindApplyHelpers;
   hasRequiredCallBindApplyHelpers = 1;
   var bind3 = functionBind;
-  var $TypeError2 = requireType();
+  var $TypeError2 = type$1;
   var $call2 = requireFunctionCall();
   var $actualApply = requireActualApply();
   callBindApplyHelpers = function callBindBasic(args) {
@@ -125689,7 +125690,7 @@ var $EvalError = _eval;
 var $RangeError = range;
 var $ReferenceError = ref;
 var $SyntaxError = syntax;
-var $TypeError$1 = requireType();
+var $TypeError$1 = type$1;
 var $URIError = uri;
 var abs = abs$1;
 var floor = floor$1;
@@ -126020,7 +126021,7 @@ var GetIntrinsic = getIntrinsic;
 var $defineProperty = GetIntrinsic("%Object.defineProperty%", true);
 var hasToStringTag = requireShams()();
 var hasOwn$3 = hasown;
-var $TypeError = requireType();
+var $TypeError = type$1;
 var toStringTag = hasToStringTag ? Symbol.toStringTag : null;
 var esSetTostringtag = function setToStringTag2(object2, value) {
   var overrideIfSet = arguments.length > 2 && !!arguments[2] && arguments[2].force;
