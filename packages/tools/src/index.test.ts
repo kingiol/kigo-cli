@@ -13,6 +13,7 @@ describe('@kigo/tools', () => {
         expect(tools.registry.get('write_file')).toBeDefined();
         expect(tools.registry.get('list_directory')).toBeDefined();
         expect(tools.registry.get('glob_search')).toBeDefined();
+        expect(tools.registry.get('answer_questions')).toBeDefined();
     });
 
     it('should export schemas', () => {

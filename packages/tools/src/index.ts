@@ -17,6 +17,7 @@ export * from './web/webSearch.js';
 export * from './web/webFetch.js';
 export * from './todo/todo.js';
 export * from './skill/skill.js';
+export * from './answer/answerQuestions.js';
 export * from './agent/subAgent.js';
 export * from './agent/runtime.js';
 
