@@ -1,36 +1,38 @@
-# Kigo Node.js
+# Kigo CLI (Node.js)
 
-> AI coding assistant for the terminal - Node.js port of Kigo
+> AI coding assistant for the terminal, built with Node.js and TypeScript
 
 [![Node.js](https://img.shields.io/badge/node-20+-blue.svg)](https://nodejs.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-**Kigo** is an intelligent CLI-based AI coding assistant designed to bring agentic capabilities directly to your terminal. As a Node.js port of the original Kigo project, it serves as a powerful pair programmer that understands your codebase context.
+**Kigo** is a CLI-based AI coding assistant designed to bring agentic capabilities directly to your terminal. It integrates with multiple LLM providers, uses a tool system for file/shell/web tasks, and stores sessions locally for persistent context.
 
-Built with a modular architecture, Kigo integrates seamlessly with major LLM providers (like OpenAI and Anthropic) and employs the Model Context Protocol (MCP) to extend its capabilities. Whether you need help with complex refactoring, file manipulation, or just want to chat with your code, Kigo handles it with persistent context awareness and a robust set of developer-focused tools.
+Built with a modular monorepo architecture, Kigo includes a CLI app, core agent/session logic, tool implementations, MCP client support, OAuth helpers, and an optional LSP server for editor integrations.
 
 ## Features
 
-- **Universal AI Support** - Seamlessly works with top-tier LLM providers including OpenAI and Anthropic.
-- **Agentic Capabilities** - Autonomous file editing, shell command execution, and task planning directly from the CLI.
-- **Smart Context** - Features SQLite-backed persistent sessions and local history to maintain deep context of your work.
+- **Multi-Provider Support** - OpenAI, Anthropic, Azure, plus OpenAI-compatible providers via base URL.
+- **Agentic Tooling** - File editing, shell commands, directory listing, search, and web fetch/search tools.
+- **Persistent Sessions** - SQLite-backed session storage with local history.
 - **MCP Integration** - Extensible tool ecosystem support via the Model Context Protocol.
-- **Skills System** - Unique "Skills" mechanism to load specialized knowledge on-demand, optimizing token usage.
-- **Developer Experience** - Built in TypeScript with a rich terminal UI, real-time streaming, and automatic provider detection.
+- **Skills System** - Load specialized knowledge on-demand via `SKILL.md`.
+- **LSP Server** - Optional `kigo lsp` command to start a stdio language server.
 
 ## Installation
 
 ### Using pnpm (Recommended)
 
 ```bash
-pnpm install -g kigo-node
+pnpm add -g @kingiol/kigo-cli
 ```
 
 ### Using npm
 
 ```bash
-npm install -g kigo-node
+npm install -g @kingiol/kigo-cli
 ```
+
+For other installation methods, see `docs/INSTALLATION.md`.
 
 ## Quick Start
 
@@ -48,15 +50,14 @@ kigo
 # Interactive mode
 kigo
 
-# Single prompt
-kigo "create a Python function to calculate fibonacci numbers"
-
 # Named session (persists conversation)
 kigo -s my-project "help me implement a new feature"
 
 # Use a different model
 KIGO_MODEL="claude-opus-4-20250514" kigo "your prompt"
 ```
+
+Note: single-prompt execution is currently stubbed in the CLI; interactive mode is the primary workflow today.
 
 ## Configuration
 
@@ -72,18 +73,18 @@ Kigo can be configured via (in priority order):
 model:
   name: "gpt-4o"
   provider: "openai"
-  reasoning_effort: null
+  reasoningEffort: null
 
 cli:
   session: null
   stream: true
 
-mcp_servers: []
+mcpServers: []
 
 skills:
   enabled: true
-  project_skills_dir: ".kigo/skills"
-  user_skills_dir: "~/.kigo/skills"
+  projectSkillsDir: ".kigo/skills"
+  userSkillsDir: "~/.kigo/skills"
 ```
 
 ### Commands
@@ -94,6 +95,10 @@ kigo config path          # Show config file path
 kigo config edit          # Edit config file
 kigo config init          # Initialize config with defaults
 kigo config set <key> <value>  # Set a config value
+kigo auth login google    # OAuth login (Google)
+kigo auth status          # Auth status
+kigo mcp list             # List MCP servers
+kigo lsp                  # Start LSP server (stdio)
 ```
 
 ## Built-in Tools
@@ -112,8 +117,10 @@ kigo config set <key> <value>  # Set a config value
 | `grep_search` | Search file contents |
 | `web_search` | Search the web (DuckDuckGo) |
 | `web_fetch` | Fetch and analyze web pages |
-| `todo_read` | Read todo list |
-| `todo_write` | Write todo list |
+| `todo_read` | Read the current todo list |
+| `todo_write` | Write the todo list (replace all todos) |
+| `answer_questions` | Ask multi-choice questions and collect responses |
+| `sub_agent_run` | Run a specialized sub-agent to handle a sub-task |
 | `get_skill` | Load skill content |
 
 ## MCP Integration
@@ -139,15 +146,15 @@ kigo mcp remove myserver
 ### Config Example
 
 ```yaml
-mcp_servers:
+mcpServers:
   - name: "filesystem"
-    transport_type: "stdio"
+    transportType: "stdio"
     command: "python"
     args: ["-m", "mcp.server.filesystem"]
-    env_vars:
+    envVars:
       ROOT_PATH: "/home/user/projects"
-    cache_tools_list: true
-    allowed_tools:
+    cacheToolsList: true
+    allowedTools:
       - "read_file"
       - "write_file"
 ```
@@ -191,7 +198,8 @@ kigo-node/
 │   ├── core/         # Core framework
 │   ├── tools/        # Built-in tools
 │   ├── mcp/          # MCP client
-│   └── auth/         # OAuth authentication
+│   ├── auth/         # OAuth authentication
+│   └── lsp/          # LSP server
 └── apps/
     └── cli/          # Main CLI application
 ```
@@ -201,7 +209,7 @@ kigo-node/
 ### Setup
 
 ```bash
-git clone https://github.com/yourusername/kigo-node.git
+git clone <this-repo>
 cd kigo-node
 pnpm install
 pnpm build
