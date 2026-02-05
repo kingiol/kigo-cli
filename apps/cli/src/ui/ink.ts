@@ -430,7 +430,36 @@ function InteractiveInkApp({
           .filter((c) => ("/" + c.name).startsWith(value));
         if (matches.length > 0) {
           const selected = matches[selectedIndex] || matches[0];
-          setInputValue(`/${selected.name} `);
+          const command = `/${selected.name}`;
+          setInputValue("");
+          appendSection("text", `> ${command}`);
+          const logs: string[] = [];
+          const original = {
+            log: console.log,
+            info: console.info,
+            warn: console.warn,
+            error: console.error,
+          };
+          const capture = (...args: any[]) => {
+            logs.push(args.map((arg) => String(arg)).join(" "));
+          };
+          console.log = capture;
+          console.info = capture;
+          console.warn = capture;
+          console.error = capture;
+          try {
+            await runtime.handleSlashCommand(command, async () => {
+              exit();
+            });
+          } finally {
+            console.log = original.log;
+            console.info = original.info;
+            console.warn = original.warn;
+            console.error = original.error;
+          }
+          if (logs.length > 0) {
+            appendSection("text", logs.join("\n"));
+          }
           return;
         }
       }
