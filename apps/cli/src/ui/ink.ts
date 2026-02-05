@@ -106,7 +106,6 @@ function InteractiveInkApp({
   const [activeToolOutputId, setActiveToolOutputId] = useState<number | null>(null);
   const [menuActive, setMenuActive] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [belowSections, setBelowSections] = useState<OutputSection[]>([]);
 
   const slashRegistry = runtimeRef.current?.getSlashRegistry();
 
@@ -148,12 +147,6 @@ function InteractiveInkApp({
     });
   }, []);
 
-  const appendBelowSection = useCallback((type: OutputSection["type"], content: string) => {
-    setBelowSections((prev) => [
-      ...prev,
-      { id: prev.length + 1, type, content },
-    ]);
-  }, []);
 
   const flushCurrentText = useCallback(() => {
     setCurrentText((text) => {
@@ -483,9 +476,9 @@ function InteractiveInkApp({
           console.warn = original.warn;
           console.error = original.error;
         }
-        appendBelowSection("text", `> ${trimmed}`);
+        appendSection("text", `> ${trimmed}`);
         if (logs.length > 0) {
-          appendBelowSection("text", logs.join("\n"));
+          appendSection("text", logs.join("\n"));
         }
         return;
       }
@@ -688,14 +681,6 @@ function InteractiveInkApp({
           h(Text, { dimColor: true }, statusText)
         )
       : null,
-    belowSections.length > 0
-      ? h(
-          Box,
-          { flexDirection: "column", marginTop: 1 },
-          ...belowSections.map((section) => h(Text, { key: section.id }, section.content))
-        )
-      : null
-    ,
     h(
       Box,
       { marginTop: 1 },
