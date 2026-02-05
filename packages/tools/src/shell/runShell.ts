@@ -98,19 +98,19 @@ tool({
         timeout: timeout * 1000,
       });
 
-      let stdout = '';
-      let stderr = '';
+      let _stdout = '';
+      let _stderr = '';
       let combined = '';
 
       proc.stdout?.on('data', (data: Buffer) => {
         const text = data.toString();
-        stdout += text;
+        _stdout += text;
         combined += text;
       });
 
       proc.stderr?.on('data', (data: Buffer) => {
         const text = data.toString();
-        stderr += text;
+        _stderr += text;
         combined += text;
       });
 

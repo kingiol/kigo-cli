@@ -121590,14 +121590,7 @@ var _eval = EvalError;
 var range = RangeError;
 var ref = ReferenceError;
 var syntax = SyntaxError;
-var type$1;
-var hasRequiredType;
-function requireType() {
-  if (hasRequiredType) return type$1;
-  hasRequiredType = 1;
-  type$1 = TypeError;
-  return type$1;
-}
+var type$1 = TypeError;
 var uri = URIError;
 var abs$1 = Math.abs;
 var floor$1 = Math.floor;
@@ -121843,7 +121836,7 @@ function requireCallBindApplyHelpers() {
   if (hasRequiredCallBindApplyHelpers) return callBindApplyHelpers;
   hasRequiredCallBindApplyHelpers = 1;
   var bind3 = functionBind;
-  var $TypeError2 = requireType();
+  var $TypeError2 = type$1;
   var $call2 = requireFunctionCall();
   var $actualApply = requireActualApply();
   callBindApplyHelpers = function callBindBasic(args) {
@@ -121916,7 +121909,7 @@ var $EvalError = _eval;
 var $RangeError = range;
 var $ReferenceError = ref;
 var $SyntaxError = syntax;
-var $TypeError$1 = requireType();
+var $TypeError$1 = type$1;
 var $URIError = uri;
 var abs = abs$1;
 var floor = floor$1;
@@ -122247,7 +122240,7 @@ var GetIntrinsic = getIntrinsic;
 var $defineProperty = GetIntrinsic("%Object.defineProperty%", true);
 var hasToStringTag = requireShams()();
 var hasOwn$3 = hasown;
-var $TypeError = requireType();
+var $TypeError = type$1;
 var toStringTag = hasToStringTag ? Symbol.toStringTag : null;
 var esSetTostringtag = function setToStringTag2(object, value) {
   var overrideIfSet = arguments.length > 2 && !!arguments[2] && arguments[2].force;

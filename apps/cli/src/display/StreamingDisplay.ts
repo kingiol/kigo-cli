@@ -5,7 +5,8 @@
 import chalk from 'chalk';
 import { ToolRenderer } from './ToolRenderer.js';
 
-const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
+const ESC = String.fromCharCode(27);
+const ANSI_PATTERN = new RegExp(`${ESC}\\[[0-9;]*m`, 'g');
 
 export interface StreamingEvent {
   type: 'text_delta' | 'tool_call' | 'tool_output' | 'done' | 'error';
@@ -30,7 +31,7 @@ export class StreamingDisplayManager {
         this.currentText += event.data;
         break;
 
-      case 'tool_call':
+      case 'tool_call': {
         this.toolNames.set(event.data.id, event.data.name);
 
         let args = {};
@@ -47,8 +48,9 @@ export class StreamingDisplayManager {
         });
         this.pendingToolCalls++;
         break;
+      }
 
-      case 'tool_output':
+      case 'tool_output': {
         const name = this.toolNames.get(event.data.id) || 'tool';
         let output = '';
         if (event.data.error) {
@@ -63,6 +65,7 @@ export class StreamingDisplayManager {
         });
         this.pendingToolCalls--;
         break;
+      }
 
       case 'error':
         // Add error as a text section
