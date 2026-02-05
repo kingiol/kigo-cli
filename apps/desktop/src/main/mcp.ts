@@ -1,4 +1,4 @@
-import { MCPServerConfigSchema, type MCPServerConfig } from '../../../cli/src/config/configSchema.js';
+import { MCPServerConfigSchema, type MCPServerConfig } from '@kigo/config';
 import { loadConfig, saveConfig } from './config.js';
 
 export async function listMcpServers(): Promise<MCPServerConfig[]> {

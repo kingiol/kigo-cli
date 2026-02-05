@@ -4,6 +4,9 @@ import {
   type ConfigGetResponse,
   type ConfigSavePayload,
   type ConfigPathResponse,
+  type ConfigInitResponse,
+  type ConfigSetPayload,
+  type ConfigSetResponse,
   type MCPAddPayload,
   type MCPAddResponse,
   type MCPListResponse,
@@ -11,6 +14,17 @@ import {
   type MCPRemoveResponse,
   type MCPTestPayload,
   type MCPTestResponse,
+  type AuthLoginPayload,
+  type AuthLoginResponse,
+  type AuthListResponse,
+  type AuthStatusPayload,
+  type AuthStatusResponse,
+  type AuthRevokePayload,
+  type AuthRevokeResponse,
+  type SkillsListResponse,
+  type SkillsGetPayload,
+  type SkillsGetResponse,
+  type SkillsRefreshResponse,
   type ChatStartPayload,
   type ChatStartResponse,
   type ChatEventPayload,
@@ -34,7 +48,10 @@ contextBridge.exposeInMainWorld('kigo', {
     get: (): Promise<ConfigGetResponse> => ipcRenderer.invoke(IPC_CHANNELS.configGet),
     save: (payload: ConfigSavePayload): Promise<{ path: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.configSave, payload),
-    path: (): Promise<ConfigPathResponse> => ipcRenderer.invoke(IPC_CHANNELS.configPath)
+    path: (): Promise<ConfigPathResponse> => ipcRenderer.invoke(IPC_CHANNELS.configPath),
+    init: (): Promise<ConfigInitResponse> => ipcRenderer.invoke(IPC_CHANNELS.configInit),
+    set: (payload: ConfigSetPayload): Promise<ConfigSetResponse> =>
+      ipcRenderer.invoke(IPC_CHANNELS.configSet, payload)
   },
   mcp: {
     list: (): Promise<MCPListResponse> => ipcRenderer.invoke(IPC_CHANNELS.mcpList),
@@ -42,6 +59,20 @@ contextBridge.exposeInMainWorld('kigo', {
     remove: (payload: MCPRemovePayload): Promise<MCPRemoveResponse> =>
       ipcRenderer.invoke(IPC_CHANNELS.mcpRemove, payload),
     test: (payload: MCPTestPayload): Promise<MCPTestResponse> => ipcRenderer.invoke(IPC_CHANNELS.mcpTest, payload)
+  },
+  auth: {
+    login: (payload: AuthLoginPayload): Promise<AuthLoginResponse> => ipcRenderer.invoke(IPC_CHANNELS.authLogin, payload),
+    list: (): Promise<AuthListResponse> => ipcRenderer.invoke(IPC_CHANNELS.authList),
+    status: (payload: AuthStatusPayload): Promise<AuthStatusResponse> =>
+      ipcRenderer.invoke(IPC_CHANNELS.authStatus, payload),
+    revoke: (payload: AuthRevokePayload): Promise<AuthRevokeResponse> =>
+      ipcRenderer.invoke(IPC_CHANNELS.authRevoke, payload)
+  },
+  skills: {
+    list: (): Promise<SkillsListResponse> => ipcRenderer.invoke(IPC_CHANNELS.skillsList),
+    get: (payload: SkillsGetPayload): Promise<SkillsGetResponse> =>
+      ipcRenderer.invoke(IPC_CHANNELS.skillsGet, payload),
+    refresh: (): Promise<SkillsRefreshResponse> => ipcRenderer.invoke(IPC_CHANNELS.skillsRefresh)
   },
   chat: {
     start: (payload: ChatStartPayload): Promise<ChatStartResponse> =>
@@ -75,5 +106,8 @@ contextBridge.exposeInMainWorld('kigo', {
       ipcRenderer.invoke(IPC_CHANNELS.exportSession, payload),
     audit: (payload: ExportAuditPayload): Promise<ExportAuditResponse> =>
       ipcRenderer.invoke(IPC_CHANNELS.exportAudit, payload)
+  },
+  app: {
+    quit: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.appQuit)
   }
 });

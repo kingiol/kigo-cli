@@ -13,9 +13,9 @@ export class SkillLoader {
   private projectDir: string;
   private userDir: string;
 
-  constructor(projectDir?: string) {
+  constructor(projectDir?: string, userDir?: string) {
     this.projectDir = projectDir || path.join(process.cwd(), '.kigo', 'skills');
-    this.userDir = path.join(os.homedir(), '.kigo', 'skills');
+    this.userDir = userDir || path.join(os.homedir(), '.kigo', 'skills');
   }
 
   async discoverSkills(): Promise<SkillMetadata[]> {

@@ -1,15 +1,22 @@
 import type { WebContents } from 'electron';
+import os from 'node:os';
+import path from 'node:path';
 import { Agent, AgentScheduler, Session, type StreamingEvent } from '@kigo/core';
 import { ProviderFactory } from '@kigo/core';
 import { MCPManager } from '@kigo/mcp';
-import { SubAgentRuntime, registry } from '@kigo/tools';
+import { SubAgentRuntime, registry, SkillLoader } from '@kigo/tools';
 import '@kigo/tools';
-import type { KigoConfig } from '../../../cli/src/config/configSchema.js';
+import type { KigoConfig } from '@kigo/config';
 import { IPC_CHANNELS } from '../shared/ipc.js';
 import { appendAudit } from './auditStore.js';
 
 const DEFAULT_SYSTEM_PROMPT = `You are Kigo Desktop, a focused AI coding assistant.
 Use available tools when they are the best way to complete a task.`;
+
+const expandTilde = (value: string): string => {
+  if (!value.startsWith('~')) return value;
+  return path.join(os.homedir(), value.slice(1));
+};
 
 type ApprovalRequest = {
   requestId: string;
@@ -83,8 +90,23 @@ export class ChatService {
       provider: config.model.provider,
       apiKey: config.model.apiKey,
       baseURL: config.model.baseUrl,
-      model: config.model.name
+      model: config.model.name,
+      azureApiVersion: config.model.azureApiVersion
     });
+
+    const skillLoader = config.skills?.enabled
+      ? new SkillLoader(
+          config.skills.projectSkillsDir ? expandTilde(config.skills.projectSkillsDir) : undefined,
+          config.skills.userSkillsDir ? expandTilde(config.skills.userSkillsDir) : undefined
+        )
+      : null;
+    const skillsMetadata = skillLoader ? await skillLoader.discoverSkills() : [];
+    const skillsPrompt =
+      skillsMetadata.length > 0
+        ? skillsMetadata.map((s) => `- ${s.name}: ${s.description}`).join('\n')
+        : 'No skills available.';
+
+    let systemPrompt = `${DEFAULT_SYSTEM_PROMPT}\n\nSkills:\n${skillsPrompt}`;
 
     const mcpManager = new MCPManager();
     await mcpManager.initialize(config.mcpServers ?? []);
@@ -110,6 +132,14 @@ export class ChatService {
 
     const builtinTools = registry.getAll().map((tool) => wrapTool(tool, 'builtin'));
     const mcpTools = mcpManager.getTools().map((tool) => wrapTool(tool, 'mcp'));
+    const mcpToolsInfo = mcpManager
+      .getTools()
+      .map((tool) => `- ${tool.name}: ${tool.description}`)
+      .join('\n');
+    if (mcpToolsInfo) {
+      systemPrompt += `\n\nMCP Tools:\n${mcpToolsInfo}`;
+    }
+
     this.subAgentRuntime.createManager(sessionId, {
       tools: [...builtinTools, ...mcpTools],
       defaultProvider: provider,
@@ -118,7 +148,8 @@ export class ChatService {
           provider: config.model.provider,
           apiKey: config.model.apiKey,
           baseURL: config.model.baseUrl,
-          model: profile.model || config.model.name
+          model: profile.model || config.model.name,
+          azureApiVersion: config.model.azureApiVersion
         }),
       defaultSystemPrompt: 'You are a specialized sub-agent. Be concise and return only what was asked.',
       maxConcurrent: 2,
@@ -127,7 +158,7 @@ export class ChatService {
 
     const agent = new Agent({
       provider,
-      systemPrompt: DEFAULT_SYSTEM_PROMPT,
+      systemPrompt,
       tools: [...builtinTools, ...mcpTools],
       sessionId
     });

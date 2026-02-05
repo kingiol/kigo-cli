@@ -384,6 +384,27 @@ button.ghost {
   color: #f87171;
 }
 
+.status-saving {
+  color: #fbbf24;
+}
+
+.raw-config {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--panel-strong);
+  font-size: 12px;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.raw-config pre {
+  margin: 0;
+  font-family: "IBM Plex Mono", "SF Mono", ui-monospace, Menlo, monospace;
+  white-space: pre-wrap;
+}
+
 .path {
   word-break: break-all;
 }
@@ -418,6 +439,72 @@ button.ghost {
 .row-actions {
   display: flex;
   gap: 8px;
+}
+
+.skills-layout {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.9fr) minmax(240px, 1.1fr);
+  gap: 14px;
+}
+
+.skills-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.skills-item {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--panel-strong);
+  padding: 10px 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.skills-item.active {
+  border-color: rgba(124, 58, 237, 0.6);
+  box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.2);
+}
+
+.skills-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.skills-card {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--panel-strong);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skill-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.skill-content {
+  background: rgba(10, 15, 20, 0.6);
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 980px) {
+  .skills-layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 .divider {

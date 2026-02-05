@@ -1,13 +1,22 @@
-import type { KigoConfig, MCPServerConfig } from '../../../cli/src/config/configSchema.js';
+import type { KigoConfig, MCPServerConfig } from '@kigo/config/schema';
 
 export const IPC_CHANNELS = {
   configGet: 'config:get',
   configSave: 'config:save',
   configPath: 'config:path',
+  configInit: 'config:init',
+  configSet: 'config:set',
   mcpList: 'mcp:list',
   mcpAdd: 'mcp:add',
   mcpRemove: 'mcp:remove',
   mcpTest: 'mcp:test',
+  authLogin: 'auth:login',
+  authList: 'auth:list',
+  authStatus: 'auth:status',
+  authRevoke: 'auth:revoke',
+  skillsList: 'skills:list',
+  skillsGet: 'skills:get',
+  skillsRefresh: 'skills:refresh',
   chatStart: 'chat:start',
   chatEvent: 'chat:event',
   chatApproval: 'chat:approval',
@@ -18,7 +27,8 @@ export const IPC_CHANNELS = {
   sessionDelete: 'session:delete',
   auditLoad: 'audit:load',
   exportSession: 'export:session',
-  exportAudit: 'export:audit'
+  exportAudit: 'export:audit',
+  appQuit: 'app:quit'
 } as const;
 
 export type ConfigGetResponse = {
@@ -32,6 +42,21 @@ export type ConfigSavePayload = {
 
 export type ConfigPathResponse = {
   path: string;
+};
+
+export type ConfigInitResponse = {
+  path: string;
+  config: KigoConfig;
+};
+
+export type ConfigSetPayload = {
+  key: string;
+  value: unknown;
+};
+
+export type ConfigSetResponse = {
+  path: string;
+  config: KigoConfig;
 };
 
 export type MCPListResponse = {
@@ -63,6 +88,70 @@ export type MCPTestPayload = {
 export type MCPTestResponse = {
   ok: boolean;
   message: string;
+};
+
+export type AuthLoginPayload = {
+  provider: string;
+};
+
+export type AuthLoginResponse = {
+  ok: boolean;
+  message?: string;
+};
+
+export type AuthListResponse = {
+  providers: Array<{
+    provider: string;
+    email?: string;
+    expiresAt?: number;
+    expired?: boolean;
+  }>;
+};
+
+export type AuthStatusPayload = {
+  provider: string;
+};
+
+export type AuthStatusResponse = {
+  provider: string;
+  email?: string;
+  expiresAt?: number;
+  expired?: boolean;
+  models?: string[];
+};
+
+export type AuthRevokePayload = {
+  provider: string;
+};
+
+export type AuthRevokeResponse = {
+  ok: boolean;
+};
+
+export type SkillsListResponse = {
+  skills: Array<{
+    name: string;
+    description: string;
+  }>;
+};
+
+export type SkillsGetPayload = {
+  name: string;
+};
+
+export type SkillsGetResponse = {
+  name: string;
+  description: string;
+  content: string;
+  allowedTools?: string[];
+  path: string;
+};
+
+export type SkillsRefreshResponse = {
+  skills: Array<{
+    name: string;
+    description: string;
+  }>;
 };
 
 export type ChatStartPayload = {

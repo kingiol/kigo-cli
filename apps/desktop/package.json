@@ -11,7 +11,9 @@
     "lint": "eslint \"src/**/*.{ts,tsx}\""
   },
   "dependencies": {
+    "@kigo/config": "workspace:*",
     "@kigo/core": "workspace:*",
+    "@kigo/auth": "workspace:*",
     "@kigo/mcp": "workspace:*",
     "@kigo/tools": "workspace:*",
     "js-yaml": "^4.1.1",

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { KigoConfigSchema, type KigoConfig, type MCPServerConfig } from '../../../cli/src/config/configSchema.js';
+import yaml from 'js-yaml';
+import { KigoConfigSchema, type KigoConfig, type MCPServerConfig } from '@kigo/config/schema';
 
 type ConfigSummary = {
   path: string;
@@ -12,6 +13,8 @@ type SaveState = {
   message?: string;
 };
 
+type SectionId = 'sessions' | 'mcp' | 'skills' | 'settings' | 'auth';
+
 type MCPFormState = {
   name: string;
   transportType: 'stdio' | 'http' | 'sse';
@@ -23,6 +26,24 @@ type MCPFormState = {
   allowedTools: string;
   blockedTools: string;
   cacheToolsList: boolean;
+};
+
+type AuthProviderSummary = {
+  provider: string;
+  email?: string;
+  expiresAt?: number;
+  expired?: boolean;
+};
+
+type SkillSummary = {
+  name: string;
+  description: string;
+};
+
+type SkillDetail = SkillSummary & {
+  content: string;
+  allowedTools?: string[];
+  path: string;
 };
 
 type ChatMessage = {
@@ -57,9 +78,19 @@ export default function App() {
   const [config, setConfig] = useState<KigoConfig | null>(null);
   const [configPath, setConfigPath] = useState<string>('');
   const [saveState, setSaveState] = useState<SaveState>({ status: 'idle' });
+  const [quickSetState, setQuickSetState] = useState<SaveState>({ status: 'idle' });
+  const [quickKey, setQuickKey] = useState('');
+  const [quickValue, setQuickValue] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [mcpServers, setMcpServers] = useState<MCPServerConfig[]>([]);
   const [mcpState, setMcpState] = useState<SaveState>({ status: 'idle' });
+  const [authProviders, setAuthProviders] = useState<AuthProviderSummary[]>([]);
+  const [authState, setAuthState] = useState<SaveState>({ status: 'idle' });
+  const [authProvider, setAuthProvider] = useState('google');
+  const [skills, setSkills] = useState<SkillSummary[]>([]);
+  const [skillsState, setSkillsState] = useState<SaveState>({ status: 'idle' });
+  const [selectedSkill, setSelectedSkill] = useState<SkillDetail | null>(null);
+  const [skillsError, setSkillsError] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [auditRecords, setAuditRecords] = useState<AuditRecord[]>([]);
   const [pendingApprovals, setPendingApprovals] = useState<ApprovalItem[]>([]);
@@ -76,6 +107,9 @@ export default function App() {
   const [sessionFilter, setSessionFilter] = useState<'all' | 'today' | 'week'>('all');
   const [sessionSort, setSessionSort] = useState<'updated' | 'created' | 'messages'>('updated');
   const [sessionSortDir, setSessionSortDir] = useState<'desc' | 'asc'>('desc');
+  const [activeSection, setActiveSection] = useState<SectionId>('sessions');
+  const [showAdvancedConfig, setShowAdvancedConfig] = useState(false);
+  const [showRawConfig, setShowRawConfig] = useState(false);
   const [auditFilters, setAuditFilters] = useState<Record<AuditRecord['type'], boolean>>({
     tool_call: true,
     tool_output: true,
@@ -85,6 +119,11 @@ export default function App() {
 
   const chatInputRef = useRef<HTMLInputElement | null>(null);
   const sessionSearchRef = useRef<HTMLInputElement | null>(null);
+  const sessionsRef = useRef<HTMLDivElement | null>(null);
+  const mcpRef = useRef<HTMLDivElement | null>(null);
+  const skillsRef = useRef<HTMLDivElement | null>(null);
+  const settingsRef = useRef<HTMLDivElement | null>(null);
+  const authRef = useRef<HTMLDivElement | null>(null);
   const [mcpForm, setMcpForm] = useState<MCPFormState>({
     name: '',
     transportType: 'stdio',
@@ -102,6 +141,18 @@ export default function App() {
     if (!window.kigo?.session) return;
     const result = await window.kigo.session.list();
     setSessions(result.sessions);
+  };
+
+  const scrollToSection = (section: SectionId) => {
+    setActiveSection(section);
+    const map: Record<SectionId, { current: HTMLDivElement | null }> = {
+      sessions: sessionsRef,
+      mcp: mcpRef,
+      skills: skillsRef,
+      settings: settingsRef,
+      auth: authRef
+    };
+    map[section].current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const filteredSessions = useMemo(() => {
@@ -167,6 +218,16 @@ export default function App() {
         const result = await window.kigo.session.list();
         if (!active) return;
         setSessions(result.sessions);
+      }
+      if (window.kigo?.auth) {
+        const result = await window.kigo.auth.list();
+        if (!active) return;
+        setAuthProviders(result.providers);
+      }
+      if (window.kigo?.skills) {
+        const result = await window.kigo.skills.list();
+        if (!active) return;
+        setSkills(result.skills);
       }
     };
     void load();
@@ -261,6 +322,41 @@ export default function App() {
 
   const isReady = !!config;
   const mcpCount = useMemo(() => config?.mcpServers?.length ?? 0, [config]);
+  const rawConfig = useMemo(() => {
+    if (!config) return '';
+    try {
+      return yaml.dump(config, { indent: 2, lineWidth: 120 });
+    } catch {
+      return '';
+    }
+  }, [config]);
+
+  const providerOptions = [
+    'openai',
+    'anthropic',
+    'azure',
+    'openrouter',
+    'together_ai',
+    'deepinfra',
+    'groq',
+    'mistral',
+    'perplexity',
+    'fireworks_ai',
+    'cloudflare',
+    'ollama',
+    'google',
+    'gemini',
+    'cohere',
+    'replicate',
+    'huggingface',
+    'vertex'
+  ];
+
+  const formatProviderLabel = (value: string) =>
+    value
+      .split('_')
+      .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+      .join(' ');
 
   const collectErrors = (nextConfig: KigoConfig) => {
     const result = KigoConfigSchema.safeParse(nextConfig);
@@ -301,6 +397,44 @@ export default function App() {
     setNextConfig({ ...config, skills: { ...config.skills, ...partial } });
   };
 
+  const resetConfig = async () => {
+    if (!window.kigo?.config) return;
+    setSaveState({ status: 'saving' });
+    try {
+      const result = await window.kigo.config.init();
+      setConfig(result.config);
+      setConfigPath(result.path);
+      setSaveState({ status: 'saved', message: `Reset to defaults at ${result.path}` });
+      void refreshSkills();
+    } catch (error) {
+      setSaveState({ status: 'error', message: `Reset failed: ${error}` });
+    }
+  };
+
+  const applyQuickSet = async () => {
+    if (!window.kigo?.config) return;
+    if (!quickKey.trim()) {
+      setQuickSetState({ status: 'error', message: 'Key is required.' });
+      return;
+    }
+    let value: unknown = quickValue;
+    try {
+      value = JSON.parse(quickValue);
+    } catch {
+      value = quickValue;
+    }
+    setQuickSetState({ status: 'saving' });
+    try {
+      const result = await window.kigo.config.set({ key: quickKey.trim(), value });
+      setConfig(result.config);
+      setConfigPath(result.path);
+      setQuickSetState({ status: 'saved', message: `Set ${quickKey}` });
+      void refreshSkills();
+    } catch (error) {
+      setQuickSetState({ status: 'error', message: `Set failed: ${error}` });
+    }
+  };
+
   const saveConfig = async () => {
     if (!config || !window.kigo?.config) return;
     const isValid = collectErrors(config);
@@ -313,9 +447,71 @@ export default function App() {
       const result = await window.kigo.config.save({ config });
       setSaveState({ status: 'saved', message: `Saved to ${result.path}` });
       setConfigPath(result.path);
+      void refreshSkills();
     } catch (error) {
       setSaveState({ status: 'error', message: `Save failed: ${error}` });
     }
+  };
+
+  const refreshAuth = async () => {
+    if (!window.kigo?.auth) return;
+    const result = await window.kigo.auth.list();
+    setAuthProviders(result.providers);
+  };
+
+  const handleAuthLogin = async () => {
+    if (!window.kigo?.auth) return;
+    setAuthState({ status: 'saving', message: 'Logging in...' });
+    try {
+      const result = await window.kigo.auth.login({ provider: authProvider });
+      if (!result.ok) {
+        setAuthState({ status: 'error', message: result.message ?? 'Login failed.' });
+      } else {
+        await refreshAuth();
+        setAuthState({ status: 'saved', message: 'Login complete.' });
+      }
+    } catch (error) {
+      setAuthState({ status: 'error', message: `Login failed: ${error}` });
+    }
+  };
+
+  const handleAuthRevoke = async (provider: string) => {
+    if (!window.kigo?.auth) return;
+    setAuthState({ status: 'saving', message: `Revoking ${provider}...` });
+    try {
+      await window.kigo.auth.revoke({ provider });
+      await refreshAuth();
+      setAuthState({ status: 'saved', message: `${provider} revoked.` });
+    } catch (error) {
+      setAuthState({ status: 'error', message: `Revoke failed: ${error}` });
+    }
+  };
+
+  const refreshSkills = async () => {
+    if (!window.kigo?.skills) return;
+    setSkillsState({ status: 'saving' });
+    try {
+      const result = await window.kigo.skills.list();
+      setSkills(result.skills);
+      setSkillsState({ status: 'saved', message: `Loaded ${result.skills.length} skills.` });
+    } catch (error) {
+      setSkillsState({ status: 'error', message: `Load failed: ${error}` });
+    }
+  };
+
+  const loadSkill = async (name: string) => {
+    if (!window.kigo?.skills) return;
+    setSkillsError(null);
+    try {
+      const result = await window.kigo.skills.get({ name });
+      setSelectedSkill(result);
+    } catch (error) {
+      setSkillsError(String(error));
+    }
+  };
+
+  const clearSkill = () => {
+    setSelectedSkill(null);
   };
 
   const addMcpServer = async () => {
@@ -533,12 +729,109 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [toast]);
 
+  useEffect(() => {
+    if (!config) return;
+    setConfigSummary({
+      path: configPath,
+      model: config.model.name,
+      provider: config.model.provider
+    });
+  }, [config, configPath]);
+
+  const appendSystemMessage = (content: string) => {
+    setMessages((prev) => [...prev, { role: 'system', content }]);
+  };
+
+  const handleSlashCommand = async (input: string): Promise<boolean> => {
+    if (!input.trim().startsWith('/')) return false;
+    const [command, ...args] = input.trim().slice(1).split(/\s+/);
+    const normalized = command.toLowerCase();
+    const helpText = [
+      '/help - Show this help',
+      '/clear - Clear conversation history',
+      '/status - Show session status',
+      '/config - Show configuration summary',
+      '/session - List recent sessions',
+      '/exit - Quit Kigo Desktop'
+    ].join('\n');
+
+    if (normalized === 'help') {
+      appendSystemMessage(helpText);
+      return true;
+    }
+
+    if (normalized === 'clear') {
+      startNewSession();
+      appendSystemMessage('Conversation cleared.');
+      return true;
+    }
+
+    if (normalized === 'exit') {
+      appendSystemMessage('Closing Kigo Desktop...');
+      await window.kigo?.app?.quit();
+      return true;
+    }
+
+    if (normalized === 'status') {
+      const messageCount = messages.filter((message) => message.role !== 'system').length;
+      appendSystemMessage(
+        [
+          'Session Status:',
+          `ID: ${sessionId ?? 'Not started'}`,
+          `Model: ${config?.model.name ?? 'Unknown'}`,
+          `Provider: ${config?.model.provider ?? 'Unknown'}`,
+          `Messages: ${messageCount}`
+        ].join('\n')
+      );
+      return true;
+    }
+
+    if (normalized === 'config') {
+      appendSystemMessage(
+        [
+          'Configuration:',
+          `Model: ${config?.model.name ?? 'Unknown'}`,
+          `Provider: ${config?.model.provider ?? 'Unknown'}`,
+          `Stream: ${config?.cli.stream ? 'true' : 'false'}`,
+          `MCP Servers: ${config?.mcpServers?.length ?? 0}`,
+          `Skills: ${config?.skills.enabled ? 'enabled' : 'disabled'}`
+        ].join('\n')
+      );
+      return true;
+    }
+
+    if (normalized === 'session') {
+      if (!window.kigo?.session) return true;
+      const result = await window.kigo.session.list();
+      const list = result.sessions
+        .map((session) => `- ${session.title ?? session.id} (${new Date(session.updatedAt).toLocaleString()})`)
+        .join('\n');
+      appendSystemMessage(['Sessions:', list || 'No sessions.'].join('\n'));
+      return true;
+    }
+
+    if (normalized) {
+      appendSystemMessage(`Unknown command: /${normalized}`);
+      if (args.length > 0) {
+        appendSystemMessage(`Args: ${args.join(' ')}`);
+      }
+      appendSystemMessage('Try /help for available commands.');
+      return true;
+    }
+
+    return false;
+  };
+
   const sendMessage = async () => {
     if (!window.kigo?.chat || !chatInput.trim()) return;
     setChatError(null);
     setIsSending(true);
     const message = chatInput.trim();
     setChatInput('');
+    if (await handleSlashCommand(message)) {
+      setIsSending(false);
+      return;
+    }
     setMessages((prev) => [...prev, { role: 'user', content: message }, { role: 'assistant', content: '' }]);
     try {
       const result = await window.kigo.chat.start({ input: message, sessionId: sessionId ?? undefined });
@@ -637,10 +930,36 @@ export default function App() {
           <span>Kigo Desktop</span>
         </div>
         <nav className="nav">
-          <button className="nav-item is-active">Sessions</button>
-          <button className="nav-item">MCP Servers</button>
-          <button className="nav-item">Skills</button>
-          <button className="nav-item">Settings</button>
+          <button
+            className={`nav-item ${activeSection === 'sessions' ? 'is-active' : ''}`}
+            onClick={() => scrollToSection('sessions')}
+          >
+            Sessions
+          </button>
+          <button
+            className={`nav-item ${activeSection === 'mcp' ? 'is-active' : ''}`}
+            onClick={() => scrollToSection('mcp')}
+          >
+            MCP Servers
+          </button>
+          <button
+            className={`nav-item ${activeSection === 'skills' ? 'is-active' : ''}`}
+            onClick={() => scrollToSection('skills')}
+          >
+            Skills
+          </button>
+          <button
+            className={`nav-item ${activeSection === 'auth' ? 'is-active' : ''}`}
+            onClick={() => scrollToSection('auth')}
+          >
+            Auth
+          </button>
+          <button
+            className={`nav-item ${activeSection === 'settings' ? 'is-active' : ''}`}
+            onClick={() => scrollToSection('settings')}
+          >
+            Settings
+          </button>
         </nav>
         <div className="sessions">
           <div className="sessions-header">
@@ -759,7 +1078,7 @@ export default function App() {
               </div>
             </div>
           ) : null}
-          <div className="panel">
+          <div className="panel" ref={sessionsRef}>
             <div className="panel-header">
               <h2>Conversation</h2>
               <span className="badge">Streaming</span>
@@ -896,7 +1215,124 @@ export default function App() {
             </div>
           </div>
 
-          <div className="panel">
+          <div className="panel" ref={skillsRef}>
+            <div className="panel-header">
+              <h2>Skills</h2>
+              <span className="badge neutral">{skills.length} loaded</span>
+            </div>
+            <div className="panel-body">
+              <div className="row-actions">
+                <button className="ghost" onClick={refreshSkills} disabled={skillsState.status === 'saving'}>
+                  Refresh
+                </button>
+                <button className="ghost" onClick={clearSkill} disabled={!selectedSkill}>
+                  Clear
+                </button>
+              </div>
+              {skillsState.status !== 'idle' ? (
+                <div className={`status status-${skillsState.status}`}>{skillsState.message ?? skillsState.status}</div>
+              ) : null}
+              {!config?.skills.enabled ? (
+                <div className="empty">Skills are disabled in configuration.</div>
+              ) : (
+                <div className="skills-layout">
+                  <div className="skills-list">
+                    {skills.length === 0 ? (
+                      <div className="empty">No skills found.</div>
+                    ) : (
+                      skills.map((skill) => (
+                        <button
+                          key={skill.name}
+                          className={`skills-item ${selectedSkill?.name === skill.name ? 'active' : ''}`}
+                          onClick={() => loadSkill(skill.name)}
+                        >
+                          <div className="mcp-title">{skill.name}</div>
+                          <div className="mcp-meta">{skill.description}</div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                  <div className="skills-detail">
+                    {skillsError ? <div className="message error-text">{skillsError}</div> : null}
+                    {!selectedSkill ? (
+                      <div className="empty">Select a skill to view details.</div>
+                    ) : (
+                      <div className="skills-card">
+                        <div className="mcp-title">{selectedSkill.name}</div>
+                        <div className="mcp-meta">{selectedSkill.description}</div>
+                        <div className="skill-meta">Path: {selectedSkill.path}</div>
+                        {selectedSkill.allowedTools && selectedSkill.allowedTools.length > 0 ? (
+                          <div className="skill-meta">Allowed tools: {selectedSkill.allowedTools.join(', ')}</div>
+                        ) : (
+                          <div className="skill-meta">Allowed tools: all</div>
+                        )}
+                        <pre className="skill-content">{selectedSkill.content}</pre>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="panel" ref={authRef}>
+            <div className="panel-header">
+              <h2>Auth</h2>
+              <span className="badge neutral">{authProviders.length} providers</span>
+            </div>
+            <div className="panel-body">
+              <div className="form-grid">
+                <label className="field">
+                  <span>Provider</span>
+                  <select value={authProvider} onChange={(event) => setAuthProvider(event.target.value)}>
+                    <option value="google">google</option>
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Actions</span>
+                  <div className="row-actions">
+                    <button className="primary" onClick={handleAuthLogin} disabled={authState.status === 'saving'}>
+                      {authState.status === 'saving' ? 'Logging in...' : 'Login'}
+                    </button>
+                    <button className="ghost" onClick={refreshAuth}>
+                      Refresh
+                    </button>
+                  </div>
+                </label>
+              </div>
+              <div className="status">
+                Login starts a local callback server on port 8085.
+              </div>
+              {authState.status !== 'idle' ? (
+                <div className={`status status-${authState.status}`}>{authState.message ?? authState.status}</div>
+              ) : null}
+              <div className="mcp-list">
+                {authProviders.length === 0 ? (
+                  <div className="empty">No providers configured.</div>
+                ) : (
+                  authProviders.map((provider) => (
+                    <div key={provider.provider} className="mcp-card">
+                      <div>
+                        <div className="mcp-title">{provider.provider}</div>
+                        <div className="mcp-meta">
+                          {provider.email ?? 'No email'}
+                          {provider.expiresAt ? ` · Expires ${new Date(provider.expiresAt).toLocaleString()}` : ''}
+                          {provider.expired ? ' · expired' : ''}
+                        </div>
+                      </div>
+                      <div className="row-actions">
+                        <button className="ghost" onClick={() => handleAuthRevoke(provider.provider)}>
+                          Revoke
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="panel" ref={settingsRef}>
             <div className="panel-header">
               <h2>Configuration</h2>
               <span className="badge neutral">{mcpCount} MCP</span>
@@ -920,10 +1356,11 @@ export default function App() {
                     onChange={(event) => updateModel({ provider: event.target.value })}
                     disabled={!isReady}
                   >
-                    <option value="openai">OpenAI</option>
-                    <option value="anthropic">Anthropic</option>
-                    <option value="azure">Azure</option>
-                    <option value="vertex">Vertex AI</option>
+                    {providerOptions.map((provider) => (
+                      <option key={provider} value={provider}>
+                        {formatProviderLabel(provider)}
+                      </option>
+                    ))}
                   </select>
                   {getError('model.provider') ? (
                     <span className="error-text">{getError('model.provider')}</span>
@@ -974,6 +1411,17 @@ export default function App() {
                   {getError('model.reasoningEffort') ? (
                     <span className="error-text">{getError('model.reasoningEffort')}</span>
                   ) : null}
+                </label>
+                <label className={`field ${getError('cli.session') ? 'has-error' : ''}`}>
+                  <span>CLI Session</span>
+                  <input
+                    type="text"
+                    value={config?.cli.session ?? ''}
+                    onChange={(event) => updateCli({ session: event.target.value || undefined })}
+                    placeholder="Optional session name"
+                    disabled={!isReady}
+                  />
+                  {getError('cli.session') ? <span className="error-text">{getError('cli.session')}</span> : null}
                 </label>
                 <label className={`field ${getError('cli.stream') ? 'has-error' : ''}`}>
                   <span>Stream Responses</span>
@@ -1027,6 +1475,95 @@ export default function App() {
                 </label>
               </div>
 
+              <div className="divider" />
+              <div className="row-actions">
+                <button className="ghost small" onClick={() => setShowAdvancedConfig((prev) => !prev)}>
+                  {showAdvancedConfig ? 'Hide Advanced' : 'Show Advanced'}
+                </button>
+                <button className="ghost small" onClick={() => setShowRawConfig((prev) => !prev)}>
+                  {showRawConfig ? 'Hide YAML' : 'View YAML'}
+                </button>
+              </div>
+
+              {showAdvancedConfig ? (
+                <div className="form-grid">
+                  <label className={`field ${getError('model.azureApiVersion') ? 'has-error' : ''}`}>
+                    <span>Azure API Version</span>
+                    <input
+                      type="text"
+                      value={config?.model.azureApiVersion ?? ''}
+                      onChange={(event) => updateModel({ azureApiVersion: event.target.value || undefined })}
+                      placeholder="2024-06-01"
+                      disabled={!isReady}
+                    />
+                    {getError('model.azureApiVersion') ? (
+                      <span className="error-text">{getError('model.azureApiVersion')}</span>
+                    ) : null}
+                  </label>
+                  <label className={`field ${getError('model.vertexAiLocation') ? 'has-error' : ''}`}>
+                    <span>Vertex Location</span>
+                    <input
+                      type="text"
+                      value={config?.model.vertexAiLocation ?? ''}
+                      onChange={(event) => updateModel({ vertexAiLocation: event.target.value || undefined })}
+                      placeholder="us-central1"
+                      disabled={!isReady}
+                    />
+                    {getError('model.vertexAiLocation') ? (
+                      <span className="error-text">{getError('model.vertexAiLocation')}</span>
+                    ) : null}
+                  </label>
+                  <label className={`field ${getError('model.vertexAiCredentialsPath') ? 'has-error' : ''}`}>
+                    <span>Vertex Credentials Path</span>
+                    <input
+                      type="text"
+                      value={config?.model.vertexAiCredentialsPath ?? ''}
+                      onChange={(event) => updateModel({ vertexAiCredentialsPath: event.target.value || undefined })}
+                      placeholder="~/.config/gcloud/application_default_credentials.json"
+                      disabled={!isReady}
+                    />
+                    {getError('model.vertexAiCredentialsPath') ? (
+                      <span className="error-text">{getError('model.vertexAiCredentialsPath')}</span>
+                    ) : null}
+                  </label>
+                </div>
+              ) : null}
+
+              {showRawConfig ? (
+                <div className="raw-config">
+                  <pre>{rawConfig}</pre>
+                </div>
+              ) : null}
+
+              <div className="status">LSP is CLI-only. Run `kigo lsp` in a terminal.</div>
+
+              <div className="divider" />
+              <div className="form-grid">
+                <label className="field">
+                  <span>Quick Set Key</span>
+                  <input
+                    type="text"
+                    value={quickKey}
+                    onChange={(event) => setQuickKey(event.target.value)}
+                    placeholder="model.name"
+                    disabled={!isReady}
+                  />
+                </label>
+                <label className="field">
+                  <span>Quick Set Value</span>
+                  <input
+                    type="text"
+                    value={quickValue}
+                    onChange={(event) => setQuickValue(event.target.value)}
+                    placeholder="gpt-4o"
+                    disabled={!isReady}
+                  />
+                </label>
+              </div>
+              {quickSetState.status !== 'idle' ? (
+                <div className={`status status-${quickSetState.status}`}>{quickSetState.message ?? quickSetState.status}</div>
+              ) : null}
+
               <div className="save-row">
                 <div className="save-meta">
                   <div className="path">Path: {configPath || 'Loading...'}</div>
@@ -1036,14 +1573,22 @@ export default function App() {
                     </div>
                   ) : null}
                 </div>
-                <button className="primary" onClick={saveConfig} disabled={!isReady || saveState.status === 'saving'}>
-                  {saveState.status === 'saving' ? 'Saving...' : 'Save Config'}
-                </button>
+                <div className="row-actions">
+                  <button className="ghost" onClick={applyQuickSet} disabled={!isReady || quickSetState.status === 'saving'}>
+                    Apply Quick Set
+                  </button>
+                  <button className="ghost" onClick={resetConfig} disabled={!isReady || saveState.status === 'saving'}>
+                    Reset Defaults
+                  </button>
+                  <button className="primary" onClick={saveConfig} disabled={!isReady || saveState.status === 'saving'}>
+                    {saveState.status === 'saving' ? 'Saving...' : 'Save Config'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="panel">
+          <div className="panel" ref={mcpRef}>
             <div className="panel-header">
               <h2>MCP Servers</h2>
               <span className="badge neutral">{mcpServers.length} active</span>

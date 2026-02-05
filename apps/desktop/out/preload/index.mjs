@@ -3,10 +3,19 @@ const IPC_CHANNELS = {
   configGet: "config:get",
   configSave: "config:save",
   configPath: "config:path",
+  configInit: "config:init",
+  configSet: "config:set",
   mcpList: "mcp:list",
   mcpAdd: "mcp:add",
   mcpRemove: "mcp:remove",
   mcpTest: "mcp:test",
+  authLogin: "auth:login",
+  authList: "auth:list",
+  authStatus: "auth:status",
+  authRevoke: "auth:revoke",
+  skillsList: "skills:list",
+  skillsGet: "skills:get",
+  skillsRefresh: "skills:refresh",
   chatStart: "chat:start",
   chatEvent: "chat:event",
   chatApproval: "chat:approval",
@@ -17,19 +26,33 @@ const IPC_CHANNELS = {
   sessionDelete: "session:delete",
   auditLoad: "audit:load",
   exportSession: "export:session",
-  exportAudit: "export:audit"
+  exportAudit: "export:audit",
+  appQuit: "app:quit"
 };
 contextBridge.exposeInMainWorld("kigo", {
   config: {
     get: () => ipcRenderer.invoke(IPC_CHANNELS.configGet),
     save: (payload) => ipcRenderer.invoke(IPC_CHANNELS.configSave, payload),
-    path: () => ipcRenderer.invoke(IPC_CHANNELS.configPath)
+    path: () => ipcRenderer.invoke(IPC_CHANNELS.configPath),
+    init: () => ipcRenderer.invoke(IPC_CHANNELS.configInit),
+    set: (payload) => ipcRenderer.invoke(IPC_CHANNELS.configSet, payload)
   },
   mcp: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.mcpList),
     add: (payload) => ipcRenderer.invoke(IPC_CHANNELS.mcpAdd, payload),
     remove: (payload) => ipcRenderer.invoke(IPC_CHANNELS.mcpRemove, payload),
     test: (payload) => ipcRenderer.invoke(IPC_CHANNELS.mcpTest, payload)
+  },
+  auth: {
+    login: (payload) => ipcRenderer.invoke(IPC_CHANNELS.authLogin, payload),
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.authList),
+    status: (payload) => ipcRenderer.invoke(IPC_CHANNELS.authStatus, payload),
+    revoke: (payload) => ipcRenderer.invoke(IPC_CHANNELS.authRevoke, payload)
+  },
+  skills: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.skillsList),
+    get: (payload) => ipcRenderer.invoke(IPC_CHANNELS.skillsGet, payload),
+    refresh: () => ipcRenderer.invoke(IPC_CHANNELS.skillsRefresh)
   },
   chat: {
     start: (payload) => ipcRenderer.invoke(IPC_CHANNELS.chatStart, payload),
@@ -57,5 +80,8 @@ contextBridge.exposeInMainWorld("kigo", {
   export: {
     session: (payload) => ipcRenderer.invoke(IPC_CHANNELS.exportSession, payload),
     audit: (payload) => ipcRenderer.invoke(IPC_CHANNELS.exportAudit, payload)
+  },
+  app: {
+    quit: () => ipcRenderer.invoke(IPC_CHANNELS.appQuit)
   }
 });
