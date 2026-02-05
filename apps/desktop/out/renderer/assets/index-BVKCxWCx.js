@@ -1,3 +1,22 @@
+function _mergeNamespaces(n2, m2) {
+  for (var i = 0; i < m2.length; i++) {
+    const e = m2[i];
+    if (typeof e !== "string" && !Array.isArray(e)) {
+      for (const k2 in e) {
+        if (k2 !== "default" && !(k2 in n2)) {
+          const d = Object.getOwnPropertyDescriptor(e, k2);
+          if (d) {
+            Object.defineProperty(n2, k2, d.get ? d : {
+              enumerable: true,
+              get: () => e[k2]
+            });
+          }
+        }
+      }
+    }
+  }
+  return Object.freeze(Object.defineProperty(n2, Symbol.toStringTag, { value: "Module" }));
+}
 function getDefaultExportFromCjs(x2) {
   return x2 && x2.__esModule && Object.prototype.hasOwnProperty.call(x2, "default") ? x2["default"] : x2;
 }
@@ -267,6 +286,10 @@ react_production_min.version = "18.3.1";
 }
 var reactExports = react.exports;
 const React = /* @__PURE__ */ getDefaultExportFromCjs(reactExports);
+const React$1 = /* @__PURE__ */ _mergeNamespaces({
+  __proto__: null,
+  default: React
+}, [reactExports]);
 /**
  * @license React
  * react-jsx-runtime.production.min.js
@@ -6966,6 +6989,1513 @@ var m = reactDomExports;
   createRoot = m.createRoot;
   m.hydrateRoot;
 }
+/**
+ * @remix-run/router v1.23.2
+ *
+ * Copyright (c) Remix Software Inc.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE.md file in the root directory of this source tree.
+ *
+ * @license MIT
+ */
+function _extends$2() {
+  _extends$2 = Object.assign ? Object.assign.bind() : function(target) {
+    for (var i = 1; i < arguments.length; i++) {
+      var source = arguments[i];
+      for (var key in source) {
+        if (Object.prototype.hasOwnProperty.call(source, key)) {
+          target[key] = source[key];
+        }
+      }
+    }
+    return target;
+  };
+  return _extends$2.apply(this, arguments);
+}
+var Action;
+(function(Action2) {
+  Action2["Pop"] = "POP";
+  Action2["Push"] = "PUSH";
+  Action2["Replace"] = "REPLACE";
+})(Action || (Action = {}));
+const PopStateEventType = "popstate";
+function createHashHistory(options) {
+  if (options === void 0) {
+    options = {};
+  }
+  function createHashLocation(window2, globalHistory) {
+    let {
+      pathname = "/",
+      search = "",
+      hash = ""
+    } = parsePath(window2.location.hash.substr(1));
+    if (!pathname.startsWith("/") && !pathname.startsWith(".")) {
+      pathname = "/" + pathname;
+    }
+    return createLocation(
+      "",
+      {
+        pathname,
+        search,
+        hash
+      },
+      // state defaults to `null` because `window.history.state` does
+      globalHistory.state && globalHistory.state.usr || null,
+      globalHistory.state && globalHistory.state.key || "default"
+    );
+  }
+  function createHashHref(window2, to) {
+    let base = window2.document.querySelector("base");
+    let href = "";
+    if (base && base.getAttribute("href")) {
+      let url = window2.location.href;
+      let hashIndex = url.indexOf("#");
+      href = hashIndex === -1 ? url : url.slice(0, hashIndex);
+    }
+    return href + "#" + (typeof to === "string" ? to : createPath(to));
+  }
+  function validateHashLocation(location, to) {
+    warning(location.pathname.charAt(0) === "/", "relative pathnames are not supported in hash history.push(" + JSON.stringify(to) + ")");
+  }
+  return getUrlBasedHistory(createHashLocation, createHashHref, validateHashLocation, options);
+}
+function invariant(value, message) {
+  if (value === false || value === null || typeof value === "undefined") {
+    throw new Error(message);
+  }
+}
+function warning(cond, message) {
+  if (!cond) {
+    if (typeof console !== "undefined") console.warn(message);
+    try {
+      throw new Error(message);
+    } catch (e) {
+    }
+  }
+}
+function createKey() {
+  return Math.random().toString(36).substr(2, 8);
+}
+function getHistoryState(location, index) {
+  return {
+    usr: location.state,
+    key: location.key,
+    idx: index
+  };
+}
+function createLocation(current, to, state, key) {
+  if (state === void 0) {
+    state = null;
+  }
+  let location = _extends$2({
+    pathname: typeof current === "string" ? current : current.pathname,
+    search: "",
+    hash: ""
+  }, typeof to === "string" ? parsePath(to) : to, {
+    state,
+    // TODO: This could be cleaned up.  push/replace should probably just take
+    // full Locations now and avoid the need to run through this flow at all
+    // But that's a pretty big refactor to the current test suite so going to
+    // keep as is for the time being and just let any incoming keys take precedence
+    key: to && to.key || key || createKey()
+  });
+  return location;
+}
+function createPath(_ref) {
+  let {
+    pathname = "/",
+    search = "",
+    hash = ""
+  } = _ref;
+  if (search && search !== "?") pathname += search.charAt(0) === "?" ? search : "?" + search;
+  if (hash && hash !== "#") pathname += hash.charAt(0) === "#" ? hash : "#" + hash;
+  return pathname;
+}
+function parsePath(path) {
+  let parsedPath = {};
+  if (path) {
+    let hashIndex = path.indexOf("#");
+    if (hashIndex >= 0) {
+      parsedPath.hash = path.substr(hashIndex);
+      path = path.substr(0, hashIndex);
+    }
+    let searchIndex = path.indexOf("?");
+    if (searchIndex >= 0) {
+      parsedPath.search = path.substr(searchIndex);
+      path = path.substr(0, searchIndex);
+    }
+    if (path) {
+      parsedPath.pathname = path;
+    }
+  }
+  return parsedPath;
+}
+function getUrlBasedHistory(getLocation, createHref, validateLocation, options) {
+  if (options === void 0) {
+    options = {};
+  }
+  let {
+    window: window2 = document.defaultView,
+    v5Compat = false
+  } = options;
+  let globalHistory = window2.history;
+  let action = Action.Pop;
+  let listener = null;
+  let index = getIndex();
+  if (index == null) {
+    index = 0;
+    globalHistory.replaceState(_extends$2({}, globalHistory.state, {
+      idx: index
+    }), "");
+  }
+  function getIndex() {
+    let state = globalHistory.state || {
+      idx: null
+    };
+    return state.idx;
+  }
+  function handlePop() {
+    action = Action.Pop;
+    let nextIndex = getIndex();
+    let delta = nextIndex == null ? null : nextIndex - index;
+    index = nextIndex;
+    if (listener) {
+      listener({
+        action,
+        location: history.location,
+        delta
+      });
+    }
+  }
+  function push(to, state) {
+    action = Action.Push;
+    let location = createLocation(history.location, to, state);
+    if (validateLocation) validateLocation(location, to);
+    index = getIndex() + 1;
+    let historyState = getHistoryState(location, index);
+    let url = history.createHref(location);
+    try {
+      globalHistory.pushState(historyState, "", url);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "DataCloneError") {
+        throw error;
+      }
+      window2.location.assign(url);
+    }
+    if (v5Compat && listener) {
+      listener({
+        action,
+        location: history.location,
+        delta: 1
+      });
+    }
+  }
+  function replace(to, state) {
+    action = Action.Replace;
+    let location = createLocation(history.location, to, state);
+    if (validateLocation) validateLocation(location, to);
+    index = getIndex();
+    let historyState = getHistoryState(location, index);
+    let url = history.createHref(location);
+    globalHistory.replaceState(historyState, "", url);
+    if (v5Compat && listener) {
+      listener({
+        action,
+        location: history.location,
+        delta: 0
+      });
+    }
+  }
+  function createURL(to) {
+    let base = window2.location.origin !== "null" ? window2.location.origin : window2.location.href;
+    let href = typeof to === "string" ? to : createPath(to);
+    href = href.replace(/ $/, "%20");
+    invariant(base, "No window.location.(origin|href) available to create URL for href: " + href);
+    return new URL(href, base);
+  }
+  let history = {
+    get action() {
+      return action;
+    },
+    get location() {
+      return getLocation(window2, globalHistory);
+    },
+    listen(fn) {
+      if (listener) {
+        throw new Error("A history only accepts one active listener");
+      }
+      window2.addEventListener(PopStateEventType, handlePop);
+      listener = fn;
+      return () => {
+        window2.removeEventListener(PopStateEventType, handlePop);
+        listener = null;
+      };
+    },
+    createHref(to) {
+      return createHref(window2, to);
+    },
+    createURL,
+    encodeLocation(to) {
+      let url = createURL(to);
+      return {
+        pathname: url.pathname,
+        search: url.search,
+        hash: url.hash
+      };
+    },
+    push,
+    replace,
+    go(n2) {
+      return globalHistory.go(n2);
+    }
+  };
+  return history;
+}
+var ResultType;
+(function(ResultType2) {
+  ResultType2["data"] = "data";
+  ResultType2["deferred"] = "deferred";
+  ResultType2["redirect"] = "redirect";
+  ResultType2["error"] = "error";
+})(ResultType || (ResultType = {}));
+function matchRoutes(routes, locationArg, basename) {
+  if (basename === void 0) {
+    basename = "/";
+  }
+  return matchRoutesImpl(routes, locationArg, basename);
+}
+function matchRoutesImpl(routes, locationArg, basename, allowPartial) {
+  let location = typeof locationArg === "string" ? parsePath(locationArg) : locationArg;
+  let pathname = stripBasename(location.pathname || "/", basename);
+  if (pathname == null) {
+    return null;
+  }
+  let branches = flattenRoutes(routes);
+  rankRouteBranches(branches);
+  let matches = null;
+  for (let i = 0; matches == null && i < branches.length; ++i) {
+    let decoded = decodePath(pathname);
+    matches = matchRouteBranch(branches[i], decoded);
+  }
+  return matches;
+}
+function flattenRoutes(routes, branches, parentsMeta, parentPath) {
+  if (branches === void 0) {
+    branches = [];
+  }
+  if (parentsMeta === void 0) {
+    parentsMeta = [];
+  }
+  if (parentPath === void 0) {
+    parentPath = "";
+  }
+  let flattenRoute = (route, index, relativePath) => {
+    let meta = {
+      relativePath: relativePath === void 0 ? route.path || "" : relativePath,
+      caseSensitive: route.caseSensitive === true,
+      childrenIndex: index,
+      route
+    };
+    if (meta.relativePath.startsWith("/")) {
+      invariant(meta.relativePath.startsWith(parentPath), 'Absolute route path "' + meta.relativePath + '" nested under path ' + ('"' + parentPath + '" is not valid. An absolute child route path ') + "must start with the combined path of all its parent routes.");
+      meta.relativePath = meta.relativePath.slice(parentPath.length);
+    }
+    let path = joinPaths([parentPath, meta.relativePath]);
+    let routesMeta = parentsMeta.concat(meta);
+    if (route.children && route.children.length > 0) {
+      invariant(
+        // Our types know better, but runtime JS may not!
+        // @ts-expect-error
+        route.index !== true,
+        "Index routes must not have child routes. Please remove " + ('all child routes from route path "' + path + '".')
+      );
+      flattenRoutes(route.children, branches, routesMeta, path);
+    }
+    if (route.path == null && !route.index) {
+      return;
+    }
+    branches.push({
+      path,
+      score: computeScore(path, route.index),
+      routesMeta
+    });
+  };
+  routes.forEach((route, index) => {
+    var _route$path;
+    if (route.path === "" || !((_route$path = route.path) != null && _route$path.includes("?"))) {
+      flattenRoute(route, index);
+    } else {
+      for (let exploded of explodeOptionalSegments(route.path)) {
+        flattenRoute(route, index, exploded);
+      }
+    }
+  });
+  return branches;
+}
+function explodeOptionalSegments(path) {
+  let segments = path.split("/");
+  if (segments.length === 0) return [];
+  let [first, ...rest] = segments;
+  let isOptional = first.endsWith("?");
+  let required = first.replace(/\?$/, "");
+  if (rest.length === 0) {
+    return isOptional ? [required, ""] : [required];
+  }
+  let restExploded = explodeOptionalSegments(rest.join("/"));
+  let result = [];
+  result.push(...restExploded.map((subpath) => subpath === "" ? required : [required, subpath].join("/")));
+  if (isOptional) {
+    result.push(...restExploded);
+  }
+  return result.map((exploded) => path.startsWith("/") && exploded === "" ? "/" : exploded);
+}
+function rankRouteBranches(branches) {
+  branches.sort((a, b) => a.score !== b.score ? b.score - a.score : compareIndexes(a.routesMeta.map((meta) => meta.childrenIndex), b.routesMeta.map((meta) => meta.childrenIndex)));
+}
+const paramRe = /^:[\w-]+$/;
+const dynamicSegmentValue = 3;
+const indexRouteValue = 2;
+const emptySegmentValue = 1;
+const staticSegmentValue = 10;
+const splatPenalty = -2;
+const isSplat = (s) => s === "*";
+function computeScore(path, index) {
+  let segments = path.split("/");
+  let initialScore = segments.length;
+  if (segments.some(isSplat)) {
+    initialScore += splatPenalty;
+  }
+  if (index) {
+    initialScore += indexRouteValue;
+  }
+  return segments.filter((s) => !isSplat(s)).reduce((score, segment) => score + (paramRe.test(segment) ? dynamicSegmentValue : segment === "" ? emptySegmentValue : staticSegmentValue), initialScore);
+}
+function compareIndexes(a, b) {
+  let siblings = a.length === b.length && a.slice(0, -1).every((n2, i) => n2 === b[i]);
+  return siblings ? (
+    // If two routes are siblings, we should try to match the earlier sibling
+    // first. This allows people to have fine-grained control over the matching
+    // behavior by simply putting routes with identical paths in the order they
+    // want them tried.
+    a[a.length - 1] - b[b.length - 1]
+  ) : (
+    // Otherwise, it doesn't really make sense to rank non-siblings by index,
+    // so they sort equally.
+    0
+  );
+}
+function matchRouteBranch(branch, pathname, allowPartial) {
+  let {
+    routesMeta
+  } = branch;
+  let matchedParams = {};
+  let matchedPathname = "/";
+  let matches = [];
+  for (let i = 0; i < routesMeta.length; ++i) {
+    let meta = routesMeta[i];
+    let end = i === routesMeta.length - 1;
+    let remainingPathname = matchedPathname === "/" ? pathname : pathname.slice(matchedPathname.length) || "/";
+    let match = matchPath({
+      path: meta.relativePath,
+      caseSensitive: meta.caseSensitive,
+      end
+    }, remainingPathname);
+    let route = meta.route;
+    if (!match) {
+      return null;
+    }
+    Object.assign(matchedParams, match.params);
+    matches.push({
+      // TODO: Can this as be avoided?
+      params: matchedParams,
+      pathname: joinPaths([matchedPathname, match.pathname]),
+      pathnameBase: normalizePathname(joinPaths([matchedPathname, match.pathnameBase])),
+      route
+    });
+    if (match.pathnameBase !== "/") {
+      matchedPathname = joinPaths([matchedPathname, match.pathnameBase]);
+    }
+  }
+  return matches;
+}
+function matchPath(pattern, pathname) {
+  if (typeof pattern === "string") {
+    pattern = {
+      path: pattern,
+      caseSensitive: false,
+      end: true
+    };
+  }
+  let [matcher, compiledParams] = compilePath(pattern.path, pattern.caseSensitive, pattern.end);
+  let match = pathname.match(matcher);
+  if (!match) return null;
+  let matchedPathname = match[0];
+  let pathnameBase = matchedPathname.replace(/(.)\/+$/, "$1");
+  let captureGroups = match.slice(1);
+  let params = compiledParams.reduce((memo, _ref, index) => {
+    let {
+      paramName,
+      isOptional
+    } = _ref;
+    if (paramName === "*") {
+      let splatValue = captureGroups[index] || "";
+      pathnameBase = matchedPathname.slice(0, matchedPathname.length - splatValue.length).replace(/(.)\/+$/, "$1");
+    }
+    const value = captureGroups[index];
+    if (isOptional && !value) {
+      memo[paramName] = void 0;
+    } else {
+      memo[paramName] = (value || "").replace(/%2F/g, "/");
+    }
+    return memo;
+  }, {});
+  return {
+    params,
+    pathname: matchedPathname,
+    pathnameBase,
+    pattern
+  };
+}
+function compilePath(path, caseSensitive, end) {
+  if (caseSensitive === void 0) {
+    caseSensitive = false;
+  }
+  if (end === void 0) {
+    end = true;
+  }
+  warning(path === "*" || !path.endsWith("*") || path.endsWith("/*"), 'Route path "' + path + '" will be treated as if it were ' + ('"' + path.replace(/\*$/, "/*") + '" because the `*` character must ') + "always follow a `/` in the pattern. To get rid of this warning, " + ('please change the route path to "' + path.replace(/\*$/, "/*") + '".'));
+  let params = [];
+  let regexpSource = "^" + path.replace(/\/*\*?$/, "").replace(/^\/*/, "/").replace(/[\\.*+^${}|()[\]]/g, "\\$&").replace(/\/:([\w-]+)(\?)?/g, (_, paramName, isOptional) => {
+    params.push({
+      paramName,
+      isOptional: isOptional != null
+    });
+    return isOptional ? "/?([^\\/]+)?" : "/([^\\/]+)";
+  });
+  if (path.endsWith("*")) {
+    params.push({
+      paramName: "*"
+    });
+    regexpSource += path === "*" || path === "/*" ? "(.*)$" : "(?:\\/(.+)|\\/*)$";
+  } else if (end) {
+    regexpSource += "\\/*$";
+  } else if (path !== "" && path !== "/") {
+    regexpSource += "(?:(?=\\/|$))";
+  } else ;
+  let matcher = new RegExp(regexpSource, caseSensitive ? void 0 : "i");
+  return [matcher, params];
+}
+function decodePath(value) {
+  try {
+    return value.split("/").map((v2) => decodeURIComponent(v2).replace(/\//g, "%2F")).join("/");
+  } catch (error) {
+    warning(false, 'The URL path "' + value + '" could not be decoded because it is is a malformed URL segment. This is probably due to a bad percent ' + ("encoding (" + error + ")."));
+    return value;
+  }
+}
+function stripBasename(pathname, basename) {
+  if (basename === "/") return pathname;
+  if (!pathname.toLowerCase().startsWith(basename.toLowerCase())) {
+    return null;
+  }
+  let startIndex = basename.endsWith("/") ? basename.length - 1 : basename.length;
+  let nextChar = pathname.charAt(startIndex);
+  if (nextChar && nextChar !== "/") {
+    return null;
+  }
+  return pathname.slice(startIndex) || "/";
+}
+const ABSOLUTE_URL_REGEX$1 = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
+const isAbsoluteUrl = (url) => ABSOLUTE_URL_REGEX$1.test(url);
+function resolvePath(to, fromPathname) {
+  if (fromPathname === void 0) {
+    fromPathname = "/";
+  }
+  let {
+    pathname: toPathname,
+    search = "",
+    hash = ""
+  } = typeof to === "string" ? parsePath(to) : to;
+  let pathname;
+  if (toPathname) {
+    if (isAbsoluteUrl(toPathname)) {
+      pathname = toPathname;
+    } else {
+      if (toPathname.includes("//")) {
+        let oldPathname = toPathname;
+        toPathname = toPathname.replace(/\/\/+/g, "/");
+        warning(false, "Pathnames cannot have embedded double slashes - normalizing " + (oldPathname + " -> " + toPathname));
+      }
+      if (toPathname.startsWith("/")) {
+        pathname = resolvePathname(toPathname.substring(1), "/");
+      } else {
+        pathname = resolvePathname(toPathname, fromPathname);
+      }
+    }
+  } else {
+    pathname = fromPathname;
+  }
+  return {
+    pathname,
+    search: normalizeSearch(search),
+    hash: normalizeHash(hash)
+  };
+}
+function resolvePathname(relativePath, fromPathname) {
+  let segments = fromPathname.replace(/\/+$/, "").split("/");
+  let relativeSegments = relativePath.split("/");
+  relativeSegments.forEach((segment) => {
+    if (segment === "..") {
+      if (segments.length > 1) segments.pop();
+    } else if (segment !== ".") {
+      segments.push(segment);
+    }
+  });
+  return segments.length > 1 ? segments.join("/") : "/";
+}
+function getInvalidPathError(char, field, dest, path) {
+  return "Cannot include a '" + char + "' character in a manually specified " + ("`to." + field + "` field [" + JSON.stringify(path) + "].  Please separate it out to the ") + ("`to." + dest + "` field. Alternatively you may provide the full path as ") + 'a string in <Link to="..."> and the router will parse it for you.';
+}
+function getPathContributingMatches(matches) {
+  return matches.filter((match, index) => index === 0 || match.route.path && match.route.path.length > 0);
+}
+function getResolveToMatches(matches, v7_relativeSplatPath) {
+  let pathMatches = getPathContributingMatches(matches);
+  if (v7_relativeSplatPath) {
+    return pathMatches.map((match, idx) => idx === pathMatches.length - 1 ? match.pathname : match.pathnameBase);
+  }
+  return pathMatches.map((match) => match.pathnameBase);
+}
+function resolveTo(toArg, routePathnames, locationPathname, isPathRelative) {
+  if (isPathRelative === void 0) {
+    isPathRelative = false;
+  }
+  let to;
+  if (typeof toArg === "string") {
+    to = parsePath(toArg);
+  } else {
+    to = _extends$2({}, toArg);
+    invariant(!to.pathname || !to.pathname.includes("?"), getInvalidPathError("?", "pathname", "search", to));
+    invariant(!to.pathname || !to.pathname.includes("#"), getInvalidPathError("#", "pathname", "hash", to));
+    invariant(!to.search || !to.search.includes("#"), getInvalidPathError("#", "search", "hash", to));
+  }
+  let isEmptyPath = toArg === "" || to.pathname === "";
+  let toPathname = isEmptyPath ? "/" : to.pathname;
+  let from;
+  if (toPathname == null) {
+    from = locationPathname;
+  } else {
+    let routePathnameIndex = routePathnames.length - 1;
+    if (!isPathRelative && toPathname.startsWith("..")) {
+      let toSegments = toPathname.split("/");
+      while (toSegments[0] === "..") {
+        toSegments.shift();
+        routePathnameIndex -= 1;
+      }
+      to.pathname = toSegments.join("/");
+    }
+    from = routePathnameIndex >= 0 ? routePathnames[routePathnameIndex] : "/";
+  }
+  let path = resolvePath(to, from);
+  let hasExplicitTrailingSlash = toPathname && toPathname !== "/" && toPathname.endsWith("/");
+  let hasCurrentTrailingSlash = (isEmptyPath || toPathname === ".") && locationPathname.endsWith("/");
+  if (!path.pathname.endsWith("/") && (hasExplicitTrailingSlash || hasCurrentTrailingSlash)) {
+    path.pathname += "/";
+  }
+  return path;
+}
+const joinPaths = (paths) => paths.join("/").replace(/\/\/+/g, "/");
+const normalizePathname = (pathname) => pathname.replace(/\/+$/, "").replace(/^\/*/, "/");
+const normalizeSearch = (search) => !search || search === "?" ? "" : search.startsWith("?") ? search : "?" + search;
+const normalizeHash = (hash) => !hash || hash === "#" ? "" : hash.startsWith("#") ? hash : "#" + hash;
+function isRouteErrorResponse(error) {
+  return error != null && typeof error.status === "number" && typeof error.statusText === "string" && typeof error.internal === "boolean" && "data" in error;
+}
+const validMutationMethodsArr = ["post", "put", "patch", "delete"];
+new Set(validMutationMethodsArr);
+const validRequestMethodsArr = ["get", ...validMutationMethodsArr];
+new Set(validRequestMethodsArr);
+/**
+ * React Router v6.30.3
+ *
+ * Copyright (c) Remix Software Inc.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE.md file in the root directory of this source tree.
+ *
+ * @license MIT
+ */
+function _extends$1() {
+  _extends$1 = Object.assign ? Object.assign.bind() : function(target) {
+    for (var i = 1; i < arguments.length; i++) {
+      var source = arguments[i];
+      for (var key in source) {
+        if (Object.prototype.hasOwnProperty.call(source, key)) {
+          target[key] = source[key];
+        }
+      }
+    }
+    return target;
+  };
+  return _extends$1.apply(this, arguments);
+}
+const DataRouterContext = /* @__PURE__ */ reactExports.createContext(null);
+const DataRouterStateContext = /* @__PURE__ */ reactExports.createContext(null);
+const NavigationContext = /* @__PURE__ */ reactExports.createContext(null);
+const LocationContext = /* @__PURE__ */ reactExports.createContext(null);
+const RouteContext = /* @__PURE__ */ reactExports.createContext({
+  outlet: null,
+  matches: [],
+  isDataRoute: false
+});
+const RouteErrorContext = /* @__PURE__ */ reactExports.createContext(null);
+function useHref(to, _temp) {
+  let {
+    relative
+  } = _temp === void 0 ? {} : _temp;
+  !useInRouterContext() ? invariant(false) : void 0;
+  let {
+    basename,
+    navigator: navigator2
+  } = reactExports.useContext(NavigationContext);
+  let {
+    hash,
+    pathname,
+    search
+  } = useResolvedPath(to, {
+    relative
+  });
+  let joinedPathname = pathname;
+  if (basename !== "/") {
+    joinedPathname = pathname === "/" ? basename : joinPaths([basename, pathname]);
+  }
+  return navigator2.createHref({
+    pathname: joinedPathname,
+    search,
+    hash
+  });
+}
+function useInRouterContext() {
+  return reactExports.useContext(LocationContext) != null;
+}
+function useLocation() {
+  !useInRouterContext() ? invariant(false) : void 0;
+  return reactExports.useContext(LocationContext).location;
+}
+function useIsomorphicLayoutEffect(cb2) {
+  let isStatic = reactExports.useContext(NavigationContext).static;
+  if (!isStatic) {
+    reactExports.useLayoutEffect(cb2);
+  }
+}
+function useNavigate() {
+  let {
+    isDataRoute
+  } = reactExports.useContext(RouteContext);
+  return isDataRoute ? useNavigateStable() : useNavigateUnstable();
+}
+function useNavigateUnstable() {
+  !useInRouterContext() ? invariant(false) : void 0;
+  let dataRouterContext = reactExports.useContext(DataRouterContext);
+  let {
+    basename,
+    future,
+    navigator: navigator2
+  } = reactExports.useContext(NavigationContext);
+  let {
+    matches
+  } = reactExports.useContext(RouteContext);
+  let {
+    pathname: locationPathname
+  } = useLocation();
+  let routePathnamesJson = JSON.stringify(getResolveToMatches(matches, future.v7_relativeSplatPath));
+  let activeRef = reactExports.useRef(false);
+  useIsomorphicLayoutEffect(() => {
+    activeRef.current = true;
+  });
+  let navigate = reactExports.useCallback(function(to, options) {
+    if (options === void 0) {
+      options = {};
+    }
+    if (!activeRef.current) return;
+    if (typeof to === "number") {
+      navigator2.go(to);
+      return;
+    }
+    let path = resolveTo(to, JSON.parse(routePathnamesJson), locationPathname, options.relative === "path");
+    if (dataRouterContext == null && basename !== "/") {
+      path.pathname = path.pathname === "/" ? basename : joinPaths([basename, path.pathname]);
+    }
+    (!!options.replace ? navigator2.replace : navigator2.push)(path, options.state, options);
+  }, [basename, navigator2, routePathnamesJson, locationPathname, dataRouterContext]);
+  return navigate;
+}
+function useResolvedPath(to, _temp2) {
+  let {
+    relative
+  } = _temp2 === void 0 ? {} : _temp2;
+  let {
+    future
+  } = reactExports.useContext(NavigationContext);
+  let {
+    matches
+  } = reactExports.useContext(RouteContext);
+  let {
+    pathname: locationPathname
+  } = useLocation();
+  let routePathnamesJson = JSON.stringify(getResolveToMatches(matches, future.v7_relativeSplatPath));
+  return reactExports.useMemo(() => resolveTo(to, JSON.parse(routePathnamesJson), locationPathname, relative === "path"), [to, routePathnamesJson, locationPathname, relative]);
+}
+function useRoutes(routes, locationArg) {
+  return useRoutesImpl(routes, locationArg);
+}
+function useRoutesImpl(routes, locationArg, dataRouterState, future) {
+  !useInRouterContext() ? invariant(false) : void 0;
+  let {
+    navigator: navigator2
+  } = reactExports.useContext(NavigationContext);
+  let {
+    matches: parentMatches
+  } = reactExports.useContext(RouteContext);
+  let routeMatch = parentMatches[parentMatches.length - 1];
+  let parentParams = routeMatch ? routeMatch.params : {};
+  routeMatch ? routeMatch.pathname : "/";
+  let parentPathnameBase = routeMatch ? routeMatch.pathnameBase : "/";
+  routeMatch && routeMatch.route;
+  let locationFromContext = useLocation();
+  let location;
+  if (locationArg) {
+    var _parsedLocationArg$pa;
+    let parsedLocationArg = typeof locationArg === "string" ? parsePath(locationArg) : locationArg;
+    !(parentPathnameBase === "/" || ((_parsedLocationArg$pa = parsedLocationArg.pathname) == null ? void 0 : _parsedLocationArg$pa.startsWith(parentPathnameBase))) ? invariant(false) : void 0;
+    location = parsedLocationArg;
+  } else {
+    location = locationFromContext;
+  }
+  let pathname = location.pathname || "/";
+  let remainingPathname = pathname;
+  if (parentPathnameBase !== "/") {
+    let parentSegments = parentPathnameBase.replace(/^\//, "").split("/");
+    let segments = pathname.replace(/^\//, "").split("/");
+    remainingPathname = "/" + segments.slice(parentSegments.length).join("/");
+  }
+  let matches = matchRoutes(routes, {
+    pathname: remainingPathname
+  });
+  let renderedMatches = _renderMatches(matches && matches.map((match) => Object.assign({}, match, {
+    params: Object.assign({}, parentParams, match.params),
+    pathname: joinPaths([
+      parentPathnameBase,
+      // Re-encode pathnames that were decoded inside matchRoutes
+      navigator2.encodeLocation ? navigator2.encodeLocation(match.pathname).pathname : match.pathname
+    ]),
+    pathnameBase: match.pathnameBase === "/" ? parentPathnameBase : joinPaths([
+      parentPathnameBase,
+      // Re-encode pathnames that were decoded inside matchRoutes
+      navigator2.encodeLocation ? navigator2.encodeLocation(match.pathnameBase).pathname : match.pathnameBase
+    ])
+  })), parentMatches, dataRouterState, future);
+  if (locationArg && renderedMatches) {
+    return /* @__PURE__ */ reactExports.createElement(LocationContext.Provider, {
+      value: {
+        location: _extends$1({
+          pathname: "/",
+          search: "",
+          hash: "",
+          state: null,
+          key: "default"
+        }, location),
+        navigationType: Action.Pop
+      }
+    }, renderedMatches);
+  }
+  return renderedMatches;
+}
+function DefaultErrorComponent() {
+  let error = useRouteError();
+  let message = isRouteErrorResponse(error) ? error.status + " " + error.statusText : error instanceof Error ? error.message : JSON.stringify(error);
+  let stack = error instanceof Error ? error.stack : null;
+  let lightgrey = "rgba(200,200,200, 0.5)";
+  let preStyles = {
+    padding: "0.5rem",
+    backgroundColor: lightgrey
+  };
+  let devInfo = null;
+  return /* @__PURE__ */ reactExports.createElement(reactExports.Fragment, null, /* @__PURE__ */ reactExports.createElement("h2", null, "Unexpected Application Error!"), /* @__PURE__ */ reactExports.createElement("h3", {
+    style: {
+      fontStyle: "italic"
+    }
+  }, message), stack ? /* @__PURE__ */ reactExports.createElement("pre", {
+    style: preStyles
+  }, stack) : null, devInfo);
+}
+const defaultErrorElement = /* @__PURE__ */ reactExports.createElement(DefaultErrorComponent, null);
+class RenderErrorBoundary extends reactExports.Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      location: props.location,
+      revalidation: props.revalidation,
+      error: props.error
+    };
+  }
+  static getDerivedStateFromError(error) {
+    return {
+      error
+    };
+  }
+  static getDerivedStateFromProps(props, state) {
+    if (state.location !== props.location || state.revalidation !== "idle" && props.revalidation === "idle") {
+      return {
+        error: props.error,
+        location: props.location,
+        revalidation: props.revalidation
+      };
+    }
+    return {
+      error: props.error !== void 0 ? props.error : state.error,
+      location: state.location,
+      revalidation: props.revalidation || state.revalidation
+    };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error("React Router caught the following error during render", error, errorInfo);
+  }
+  render() {
+    return this.state.error !== void 0 ? /* @__PURE__ */ reactExports.createElement(RouteContext.Provider, {
+      value: this.props.routeContext
+    }, /* @__PURE__ */ reactExports.createElement(RouteErrorContext.Provider, {
+      value: this.state.error,
+      children: this.props.component
+    })) : this.props.children;
+  }
+}
+function RenderedRoute(_ref) {
+  let {
+    routeContext,
+    match,
+    children
+  } = _ref;
+  let dataRouterContext = reactExports.useContext(DataRouterContext);
+  if (dataRouterContext && dataRouterContext.static && dataRouterContext.staticContext && (match.route.errorElement || match.route.ErrorBoundary)) {
+    dataRouterContext.staticContext._deepestRenderedBoundaryId = match.route.id;
+  }
+  return /* @__PURE__ */ reactExports.createElement(RouteContext.Provider, {
+    value: routeContext
+  }, children);
+}
+function _renderMatches(matches, parentMatches, dataRouterState, future) {
+  var _dataRouterState;
+  if (parentMatches === void 0) {
+    parentMatches = [];
+  }
+  if (dataRouterState === void 0) {
+    dataRouterState = null;
+  }
+  if (future === void 0) {
+    future = null;
+  }
+  if (matches == null) {
+    var _future;
+    if (!dataRouterState) {
+      return null;
+    }
+    if (dataRouterState.errors) {
+      matches = dataRouterState.matches;
+    } else if ((_future = future) != null && _future.v7_partialHydration && parentMatches.length === 0 && !dataRouterState.initialized && dataRouterState.matches.length > 0) {
+      matches = dataRouterState.matches;
+    } else {
+      return null;
+    }
+  }
+  let renderedMatches = matches;
+  let errors = (_dataRouterState = dataRouterState) == null ? void 0 : _dataRouterState.errors;
+  if (errors != null) {
+    let errorIndex = renderedMatches.findIndex((m2) => m2.route.id && (errors == null ? void 0 : errors[m2.route.id]) !== void 0);
+    !(errorIndex >= 0) ? invariant(false) : void 0;
+    renderedMatches = renderedMatches.slice(0, Math.min(renderedMatches.length, errorIndex + 1));
+  }
+  let renderFallback = false;
+  let fallbackIndex = -1;
+  if (dataRouterState && future && future.v7_partialHydration) {
+    for (let i = 0; i < renderedMatches.length; i++) {
+      let match = renderedMatches[i];
+      if (match.route.HydrateFallback || match.route.hydrateFallbackElement) {
+        fallbackIndex = i;
+      }
+      if (match.route.id) {
+        let {
+          loaderData,
+          errors: errors2
+        } = dataRouterState;
+        let needsToRunLoader = match.route.loader && loaderData[match.route.id] === void 0 && (!errors2 || errors2[match.route.id] === void 0);
+        if (match.route.lazy || needsToRunLoader) {
+          renderFallback = true;
+          if (fallbackIndex >= 0) {
+            renderedMatches = renderedMatches.slice(0, fallbackIndex + 1);
+          } else {
+            renderedMatches = [renderedMatches[0]];
+          }
+          break;
+        }
+      }
+    }
+  }
+  return renderedMatches.reduceRight((outlet, match, index) => {
+    let error;
+    let shouldRenderHydrateFallback = false;
+    let errorElement = null;
+    let hydrateFallbackElement = null;
+    if (dataRouterState) {
+      error = errors && match.route.id ? errors[match.route.id] : void 0;
+      errorElement = match.route.errorElement || defaultErrorElement;
+      if (renderFallback) {
+        if (fallbackIndex < 0 && index === 0) {
+          warningOnce("route-fallback");
+          shouldRenderHydrateFallback = true;
+          hydrateFallbackElement = null;
+        } else if (fallbackIndex === index) {
+          shouldRenderHydrateFallback = true;
+          hydrateFallbackElement = match.route.hydrateFallbackElement || null;
+        }
+      }
+    }
+    let matches2 = parentMatches.concat(renderedMatches.slice(0, index + 1));
+    let getChildren = () => {
+      let children;
+      if (error) {
+        children = errorElement;
+      } else if (shouldRenderHydrateFallback) {
+        children = hydrateFallbackElement;
+      } else if (match.route.Component) {
+        children = /* @__PURE__ */ reactExports.createElement(match.route.Component, null);
+      } else if (match.route.element) {
+        children = match.route.element;
+      } else {
+        children = outlet;
+      }
+      return /* @__PURE__ */ reactExports.createElement(RenderedRoute, {
+        match,
+        routeContext: {
+          outlet,
+          matches: matches2,
+          isDataRoute: dataRouterState != null
+        },
+        children
+      });
+    };
+    return dataRouterState && (match.route.ErrorBoundary || match.route.errorElement || index === 0) ? /* @__PURE__ */ reactExports.createElement(RenderErrorBoundary, {
+      location: dataRouterState.location,
+      revalidation: dataRouterState.revalidation,
+      component: errorElement,
+      error,
+      children: getChildren(),
+      routeContext: {
+        outlet: null,
+        matches: matches2,
+        isDataRoute: true
+      }
+    }) : getChildren();
+  }, null);
+}
+var DataRouterHook$1 = /* @__PURE__ */ function(DataRouterHook2) {
+  DataRouterHook2["UseBlocker"] = "useBlocker";
+  DataRouterHook2["UseRevalidator"] = "useRevalidator";
+  DataRouterHook2["UseNavigateStable"] = "useNavigate";
+  return DataRouterHook2;
+}(DataRouterHook$1 || {});
+var DataRouterStateHook$1 = /* @__PURE__ */ function(DataRouterStateHook2) {
+  DataRouterStateHook2["UseBlocker"] = "useBlocker";
+  DataRouterStateHook2["UseLoaderData"] = "useLoaderData";
+  DataRouterStateHook2["UseActionData"] = "useActionData";
+  DataRouterStateHook2["UseRouteError"] = "useRouteError";
+  DataRouterStateHook2["UseNavigation"] = "useNavigation";
+  DataRouterStateHook2["UseRouteLoaderData"] = "useRouteLoaderData";
+  DataRouterStateHook2["UseMatches"] = "useMatches";
+  DataRouterStateHook2["UseRevalidator"] = "useRevalidator";
+  DataRouterStateHook2["UseNavigateStable"] = "useNavigate";
+  DataRouterStateHook2["UseRouteId"] = "useRouteId";
+  return DataRouterStateHook2;
+}(DataRouterStateHook$1 || {});
+function useDataRouterContext$1(hookName) {
+  let ctx = reactExports.useContext(DataRouterContext);
+  !ctx ? invariant(false) : void 0;
+  return ctx;
+}
+function useDataRouterState(hookName) {
+  let state = reactExports.useContext(DataRouterStateContext);
+  !state ? invariant(false) : void 0;
+  return state;
+}
+function useRouteContext(hookName) {
+  let route = reactExports.useContext(RouteContext);
+  !route ? invariant(false) : void 0;
+  return route;
+}
+function useCurrentRouteId(hookName) {
+  let route = useRouteContext();
+  let thisRoute = route.matches[route.matches.length - 1];
+  !thisRoute.route.id ? invariant(false) : void 0;
+  return thisRoute.route.id;
+}
+function useRouteError() {
+  var _state$errors;
+  let error = reactExports.useContext(RouteErrorContext);
+  let state = useDataRouterState();
+  let routeId = useCurrentRouteId();
+  if (error !== void 0) {
+    return error;
+  }
+  return (_state$errors = state.errors) == null ? void 0 : _state$errors[routeId];
+}
+function useNavigateStable() {
+  let {
+    router
+  } = useDataRouterContext$1(DataRouterHook$1.UseNavigateStable);
+  let id2 = useCurrentRouteId(DataRouterStateHook$1.UseNavigateStable);
+  let activeRef = reactExports.useRef(false);
+  useIsomorphicLayoutEffect(() => {
+    activeRef.current = true;
+  });
+  let navigate = reactExports.useCallback(function(to, options) {
+    if (options === void 0) {
+      options = {};
+    }
+    if (!activeRef.current) return;
+    if (typeof to === "number") {
+      router.navigate(to);
+    } else {
+      router.navigate(to, _extends$1({
+        fromRouteId: id2
+      }, options));
+    }
+  }, [router, id2]);
+  return navigate;
+}
+const alreadyWarned$1 = {};
+function warningOnce(key, cond, message) {
+  if (!alreadyWarned$1[key]) {
+    alreadyWarned$1[key] = true;
+  }
+}
+function logV6DeprecationWarnings(renderFuture, routerFuture) {
+  if ((renderFuture == null ? void 0 : renderFuture.v7_startTransition) === void 0) ;
+  if ((renderFuture == null ? void 0 : renderFuture.v7_relativeSplatPath) === void 0 && true) ;
+}
+function Navigate(_ref4) {
+  let {
+    to,
+    replace: replace2,
+    state,
+    relative
+  } = _ref4;
+  !useInRouterContext() ? invariant(false) : void 0;
+  let {
+    future,
+    static: isStatic
+  } = reactExports.useContext(NavigationContext);
+  let {
+    matches
+  } = reactExports.useContext(RouteContext);
+  let {
+    pathname: locationPathname
+  } = useLocation();
+  let navigate = useNavigate();
+  let path = resolveTo(to, getResolveToMatches(matches, future.v7_relativeSplatPath), locationPathname, relative === "path");
+  let jsonPath = JSON.stringify(path);
+  reactExports.useEffect(() => navigate(JSON.parse(jsonPath), {
+    replace: replace2,
+    state,
+    relative
+  }), [navigate, jsonPath, relative, replace2, state]);
+  return null;
+}
+function Route(_props) {
+  invariant(false);
+}
+function Router(_ref5) {
+  let {
+    basename: basenameProp = "/",
+    children = null,
+    location: locationProp,
+    navigationType = Action.Pop,
+    navigator: navigator2,
+    static: staticProp = false,
+    future
+  } = _ref5;
+  !!useInRouterContext() ? invariant(false) : void 0;
+  let basename = basenameProp.replace(/^\/*/, "/");
+  let navigationContext = reactExports.useMemo(() => ({
+    basename,
+    navigator: navigator2,
+    static: staticProp,
+    future: _extends$1({
+      v7_relativeSplatPath: false
+    }, future)
+  }), [basename, future, navigator2, staticProp]);
+  if (typeof locationProp === "string") {
+    locationProp = parsePath(locationProp);
+  }
+  let {
+    pathname = "/",
+    search = "",
+    hash = "",
+    state = null,
+    key = "default"
+  } = locationProp;
+  let locationContext = reactExports.useMemo(() => {
+    let trailingPathname = stripBasename(pathname, basename);
+    if (trailingPathname == null) {
+      return null;
+    }
+    return {
+      location: {
+        pathname: trailingPathname,
+        search,
+        hash,
+        state,
+        key
+      },
+      navigationType
+    };
+  }, [basename, pathname, search, hash, state, key, navigationType]);
+  if (locationContext == null) {
+    return null;
+  }
+  return /* @__PURE__ */ reactExports.createElement(NavigationContext.Provider, {
+    value: navigationContext
+  }, /* @__PURE__ */ reactExports.createElement(LocationContext.Provider, {
+    children,
+    value: locationContext
+  }));
+}
+function Routes(_ref6) {
+  let {
+    children,
+    location
+  } = _ref6;
+  return useRoutes(createRoutesFromChildren(children), location);
+}
+new Promise(() => {
+});
+function createRoutesFromChildren(children, parentPath) {
+  if (parentPath === void 0) {
+    parentPath = [];
+  }
+  let routes = [];
+  reactExports.Children.forEach(children, (element, index) => {
+    if (!/* @__PURE__ */ reactExports.isValidElement(element)) {
+      return;
+    }
+    let treePath = [...parentPath, index];
+    if (element.type === reactExports.Fragment) {
+      routes.push.apply(routes, createRoutesFromChildren(element.props.children, treePath));
+      return;
+    }
+    !(element.type === Route) ? invariant(false) : void 0;
+    !(!element.props.index || !element.props.children) ? invariant(false) : void 0;
+    let route = {
+      id: element.props.id || treePath.join("-"),
+      caseSensitive: element.props.caseSensitive,
+      element: element.props.element,
+      Component: element.props.Component,
+      index: element.props.index,
+      path: element.props.path,
+      loader: element.props.loader,
+      action: element.props.action,
+      errorElement: element.props.errorElement,
+      ErrorBoundary: element.props.ErrorBoundary,
+      hasErrorBoundary: element.props.ErrorBoundary != null || element.props.errorElement != null,
+      shouldRevalidate: element.props.shouldRevalidate,
+      handle: element.props.handle,
+      lazy: element.props.lazy
+    };
+    if (element.props.children) {
+      route.children = createRoutesFromChildren(element.props.children, treePath);
+    }
+    routes.push(route);
+  });
+  return routes;
+}
+/**
+ * React Router DOM v6.30.3
+ *
+ * Copyright (c) Remix Software Inc.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE.md file in the root directory of this source tree.
+ *
+ * @license MIT
+ */
+function _extends() {
+  _extends = Object.assign ? Object.assign.bind() : function(target) {
+    for (var i = 1; i < arguments.length; i++) {
+      var source = arguments[i];
+      for (var key in source) {
+        if (Object.prototype.hasOwnProperty.call(source, key)) {
+          target[key] = source[key];
+        }
+      }
+    }
+    return target;
+  };
+  return _extends.apply(this, arguments);
+}
+function _objectWithoutPropertiesLoose(source, excluded) {
+  if (source == null) return {};
+  var target = {};
+  var sourceKeys = Object.keys(source);
+  var key, i;
+  for (i = 0; i < sourceKeys.length; i++) {
+    key = sourceKeys[i];
+    if (excluded.indexOf(key) >= 0) continue;
+    target[key] = source[key];
+  }
+  return target;
+}
+function isModifiedEvent(event) {
+  return !!(event.metaKey || event.altKey || event.ctrlKey || event.shiftKey);
+}
+function shouldProcessLinkClick(event, target) {
+  return event.button === 0 && // Ignore everything but left clicks
+  (!target || target === "_self") && // Let browser handle "target=_blank" etc.
+  !isModifiedEvent(event);
+}
+const _excluded = ["onClick", "relative", "reloadDocument", "replace", "state", "target", "to", "preventScrollReset", "viewTransition"], _excluded2 = ["aria-current", "caseSensitive", "className", "end", "style", "to", "viewTransition", "children"];
+const REACT_ROUTER_VERSION = "6";
+try {
+  window.__reactRouterVersion = REACT_ROUTER_VERSION;
+} catch (e) {
+}
+const ViewTransitionContext = /* @__PURE__ */ reactExports.createContext({
+  isTransitioning: false
+});
+const START_TRANSITION = "startTransition";
+const startTransitionImpl = React$1[START_TRANSITION];
+function HashRouter(_ref5) {
+  let {
+    basename,
+    children,
+    future,
+    window: window2
+  } = _ref5;
+  let historyRef = reactExports.useRef();
+  if (historyRef.current == null) {
+    historyRef.current = createHashHistory({
+      window: window2,
+      v5Compat: true
+    });
+  }
+  let history = historyRef.current;
+  let [state, setStateImpl] = reactExports.useState({
+    action: history.action,
+    location: history.location
+  });
+  let {
+    v7_startTransition
+  } = future || {};
+  let setState = reactExports.useCallback((newState) => {
+    v7_startTransition && startTransitionImpl ? startTransitionImpl(() => setStateImpl(newState)) : setStateImpl(newState);
+  }, [setStateImpl, v7_startTransition]);
+  reactExports.useLayoutEffect(() => history.listen(setState), [history, setState]);
+  reactExports.useEffect(() => logV6DeprecationWarnings(future), [future]);
+  return /* @__PURE__ */ reactExports.createElement(Router, {
+    basename,
+    children,
+    location: state.location,
+    navigationType: state.action,
+    navigator: history,
+    future
+  });
+}
+const isBrowser = typeof window !== "undefined" && typeof window.document !== "undefined" && typeof window.document.createElement !== "undefined";
+const ABSOLUTE_URL_REGEX = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
+const Link = /* @__PURE__ */ reactExports.forwardRef(function LinkWithRef(_ref7, ref) {
+  let {
+    onClick,
+    relative,
+    reloadDocument,
+    replace: replace2,
+    state,
+    target,
+    to,
+    preventScrollReset,
+    viewTransition
+  } = _ref7, rest = _objectWithoutPropertiesLoose(_ref7, _excluded);
+  let {
+    basename
+  } = reactExports.useContext(NavigationContext);
+  let absoluteHref;
+  let isExternal = false;
+  if (typeof to === "string" && ABSOLUTE_URL_REGEX.test(to)) {
+    absoluteHref = to;
+    if (isBrowser) {
+      try {
+        let currentUrl = new URL(window.location.href);
+        let targetUrl = to.startsWith("//") ? new URL(currentUrl.protocol + to) : new URL(to);
+        let path = stripBasename(targetUrl.pathname, basename);
+        if (targetUrl.origin === currentUrl.origin && path != null) {
+          to = path + targetUrl.search + targetUrl.hash;
+        } else {
+          isExternal = true;
+        }
+      } catch (e) {
+      }
+    }
+  }
+  let href = useHref(to, {
+    relative
+  });
+  let internalOnClick = useLinkClickHandler(to, {
+    replace: replace2,
+    state,
+    target,
+    preventScrollReset,
+    relative,
+    viewTransition
+  });
+  function handleClick(event) {
+    if (onClick) onClick(event);
+    if (!event.defaultPrevented) {
+      internalOnClick(event);
+    }
+  }
+  return (
+    // eslint-disable-next-line jsx-a11y/anchor-has-content
+    /* @__PURE__ */ reactExports.createElement("a", _extends({}, rest, {
+      href: absoluteHref || href,
+      onClick: isExternal || reloadDocument ? onClick : handleClick,
+      ref,
+      target
+    }))
+  );
+});
+const NavLink = /* @__PURE__ */ reactExports.forwardRef(function NavLinkWithRef(_ref8, ref) {
+  let {
+    "aria-current": ariaCurrentProp = "page",
+    caseSensitive = false,
+    className: classNameProp = "",
+    end = false,
+    style: styleProp,
+    to,
+    viewTransition,
+    children
+  } = _ref8, rest = _objectWithoutPropertiesLoose(_ref8, _excluded2);
+  let path = useResolvedPath(to, {
+    relative: rest.relative
+  });
+  let location = useLocation();
+  let routerState = reactExports.useContext(DataRouterStateContext);
+  let {
+    navigator: navigator2,
+    basename
+  } = reactExports.useContext(NavigationContext);
+  let isTransitioning = routerState != null && // Conditional usage is OK here because the usage of a data router is static
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useViewTransitionState(path) && viewTransition === true;
+  let toPathname = navigator2.encodeLocation ? navigator2.encodeLocation(path).pathname : path.pathname;
+  let locationPathname = location.pathname;
+  let nextLocationPathname = routerState && routerState.navigation && routerState.navigation.location ? routerState.navigation.location.pathname : null;
+  if (!caseSensitive) {
+    locationPathname = locationPathname.toLowerCase();
+    nextLocationPathname = nextLocationPathname ? nextLocationPathname.toLowerCase() : null;
+    toPathname = toPathname.toLowerCase();
+  }
+  if (nextLocationPathname && basename) {
+    nextLocationPathname = stripBasename(nextLocationPathname, basename) || nextLocationPathname;
+  }
+  const endSlashPosition = toPathname !== "/" && toPathname.endsWith("/") ? toPathname.length - 1 : toPathname.length;
+  let isActive = locationPathname === toPathname || !end && locationPathname.startsWith(toPathname) && locationPathname.charAt(endSlashPosition) === "/";
+  let isPending = nextLocationPathname != null && (nextLocationPathname === toPathname || !end && nextLocationPathname.startsWith(toPathname) && nextLocationPathname.charAt(toPathname.length) === "/");
+  let renderProps = {
+    isActive,
+    isPending,
+    isTransitioning
+  };
+  let ariaCurrent = isActive ? ariaCurrentProp : void 0;
+  let className;
+  if (typeof classNameProp === "function") {
+    className = classNameProp(renderProps);
+  } else {
+    className = [classNameProp, isActive ? "active" : null, isPending ? "pending" : null, isTransitioning ? "transitioning" : null].filter(Boolean).join(" ");
+  }
+  let style = typeof styleProp === "function" ? styleProp(renderProps) : styleProp;
+  return /* @__PURE__ */ reactExports.createElement(Link, _extends({}, rest, {
+    "aria-current": ariaCurrent,
+    className,
+    ref,
+    style,
+    to,
+    viewTransition
+  }), typeof children === "function" ? children(renderProps) : children);
+});
+var DataRouterHook;
+(function(DataRouterHook2) {
+  DataRouterHook2["UseScrollRestoration"] = "useScrollRestoration";
+  DataRouterHook2["UseSubmit"] = "useSubmit";
+  DataRouterHook2["UseSubmitFetcher"] = "useSubmitFetcher";
+  DataRouterHook2["UseFetcher"] = "useFetcher";
+  DataRouterHook2["useViewTransitionState"] = "useViewTransitionState";
+})(DataRouterHook || (DataRouterHook = {}));
+var DataRouterStateHook;
+(function(DataRouterStateHook2) {
+  DataRouterStateHook2["UseFetcher"] = "useFetcher";
+  DataRouterStateHook2["UseFetchers"] = "useFetchers";
+  DataRouterStateHook2["UseScrollRestoration"] = "useScrollRestoration";
+})(DataRouterStateHook || (DataRouterStateHook = {}));
+function useDataRouterContext(hookName) {
+  let ctx = reactExports.useContext(DataRouterContext);
+  !ctx ? invariant(false) : void 0;
+  return ctx;
+}
+function useLinkClickHandler(to, _temp) {
+  let {
+    target,
+    replace: replaceProp,
+    state,
+    preventScrollReset,
+    relative,
+    viewTransition
+  } = _temp === void 0 ? {} : _temp;
+  let navigate = useNavigate();
+  let location = useLocation();
+  let path = useResolvedPath(to, {
+    relative
+  });
+  return reactExports.useCallback((event) => {
+    if (shouldProcessLinkClick(event, target)) {
+      event.preventDefault();
+      let replace2 = replaceProp !== void 0 ? replaceProp : createPath(location) === createPath(path);
+      navigate(to, {
+        replace: replace2,
+        state,
+        preventScrollReset,
+        relative,
+        viewTransition
+      });
+    }
+  }, [location, navigate, path, replaceProp, state, target, to, preventScrollReset, relative, viewTransition]);
+}
+function useViewTransitionState(to, opts) {
+  if (opts === void 0) {
+    opts = {};
+  }
+  let vtContext = reactExports.useContext(ViewTransitionContext);
+  !(vtContext != null) ? invariant(false) : void 0;
+  let {
+    basename
+  } = useDataRouterContext(DataRouterHook.useViewTransitionState);
+  let path = useResolvedPath(to, {
+    relative: opts.relative
+  });
+  if (!vtContext.isTransitioning) {
+    return false;
+  }
+  let currentPath = stripBasename(vtContext.currentLocation.pathname, basename) || vtContext.currentLocation.pathname;
+  let nextPath = stripBasename(vtContext.nextLocation.pathname, basename) || vtContext.nextLocation.pathname;
+  return matchPath(path.pathname, nextPath) != null || matchPath(path.pathname, currentPath) != null;
+}
 /*! js-yaml 4.1.1 https://github.com/nodeca/js-yaml @license MIT */
 function isNothing(subject) {
   return typeof subject === "undefined" || subject === null;
@@ -13296,7 +14826,6 @@ function App() {
   const [sessionFilter, setSessionFilter] = reactExports.useState("all");
   const [sessionSort, setSessionSort] = reactExports.useState("updated");
   const [sessionSortDir, setSessionSortDir] = reactExports.useState("desc");
-  const [activeSection, setActiveSection] = reactExports.useState("sessions");
   const [showAdvancedConfig, setShowAdvancedConfig] = reactExports.useState(false);
   const [showRawConfig, setShowRawConfig] = reactExports.useState(false);
   const [auditFilters, setAuditFilters] = reactExports.useState({
@@ -13307,11 +14836,6 @@ function App() {
   });
   const chatInputRef = reactExports.useRef(null);
   const sessionSearchRef = reactExports.useRef(null);
-  const sessionsRef = reactExports.useRef(null);
-  const mcpRef = reactExports.useRef(null);
-  const skillsRef = reactExports.useRef(null);
-  const settingsRef = reactExports.useRef(null);
-  const authRef = reactExports.useRef(null);
   const [mcpForm, setMcpForm] = reactExports.useState({
     name: "",
     transportType: "stdio",
@@ -13328,17 +14852,6 @@ function App() {
     if (!window.kigo?.session) return;
     const result = await window.kigo.session.list();
     setSessions(result.sessions);
-  };
-  const scrollToSection = (section) => {
-    setActiveSection(section);
-    const map2 = {
-      sessions: sessionsRef,
-      mcp: mcpRef,
-      skills: skillsRef,
-      settings: settingsRef,
-      auth: authRef
-    };
-    map2[section].current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   const filteredSessions = reactExports.useMemo(() => {
     const query = sessionQuery.trim().toLowerCase();
@@ -14014,46 +15527,11 @@ function App() {
         /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Kigo Desktop" })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("nav", { className: "nav", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "button",
-          {
-            className: `nav-item ${activeSection === "sessions" ? "is-active" : ""}`,
-            onClick: () => scrollToSection("sessions"),
-            children: "Sessions"
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "button",
-          {
-            className: `nav-item ${activeSection === "mcp" ? "is-active" : ""}`,
-            onClick: () => scrollToSection("mcp"),
-            children: "MCP Servers"
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "button",
-          {
-            className: `nav-item ${activeSection === "skills" ? "is-active" : ""}`,
-            onClick: () => scrollToSection("skills"),
-            children: "Skills"
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "button",
-          {
-            className: `nav-item ${activeSection === "auth" ? "is-active" : ""}`,
-            onClick: () => scrollToSection("auth"),
-            children: "Auth"
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "button",
-          {
-            className: `nav-item ${activeSection === "settings" ? "is-active" : ""}`,
-            onClick: () => scrollToSection("settings"),
-            children: "Settings"
-          }
-        )
+        /* @__PURE__ */ jsxRuntimeExports.jsx(NavLink, { to: "/sessions", end: true, className: ({ isActive }) => `nav-item ${isActive ? "is-active" : ""}`, children: "Sessions" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(NavLink, { to: "/mcp", className: ({ isActive }) => `nav-item ${isActive ? "is-active" : ""}`, children: "MCP Servers" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(NavLink, { to: "/skills", className: ({ isActive }) => `nav-item ${isActive ? "is-active" : ""}`, children: "Skills" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(NavLink, { to: "/auth", className: ({ isActive }) => `nav-item ${isActive ? "is-active" : ""}`, children: "Auth" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(NavLink, { to: "/settings", className: ({ isActive }) => `nav-item ${isActive ? "is-active" : ""}`, children: "Settings" })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sessions", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sessions-header", children: [
@@ -14114,661 +15592,703 @@ function App() {
           /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "primary", children: "Run" })
         ] })
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "content", children: [
-        deleteConfirmId ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "modal-backdrop", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "modal", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Delete session?" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "This will remove the session and its history from local storage." }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "row-actions", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: cancelDeleteSession, children: "Cancel" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "primary", onClick: confirmDeleteSession, children: "Delete" })
-          ] })
-        ] }) }) : null,
-        editingSessionId ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-header", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { children: "Rename Session" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "badge neutral", children: "Editing" })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "panel-body", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chat-input", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "input",
-              {
-                type: "text",
-                value: editingTitle,
-                onChange: (event) => setEditingTitle(event.target.value),
-                placeholder: "Session title"
-              }
-            ),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "row-actions", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: cancelRenameSession, children: "Cancel" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "primary", onClick: () => confirmRenameSession(editingSessionId), children: "Save" })
-            ] })
-          ] }) })
-        ] }) : null,
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel", ref: sessionsRef, children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-header", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { children: "Conversation" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "badge", children: "Streaming" })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-body", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "message muted", children: "Welcome to Kigo Desktop." }),
-            configSummary ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "message muted", children: [
-              "Config: ",
-              configSummary.model,
-              " (",
-              configSummary.provider,
-              ") · ",
-              configSummary.path
-            ] }) : null,
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chat-messages", children: messages.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "message muted", children: "Send a message to begin a session." }) : messages.map((message, index) => /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `message ${message.role}`, children: message.content || (message.role === "assistant" ? "..." : "") }, `${message.role}-${index}`)) }),
-            chatError ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "message error-text", children: chatError }) : null,
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chat-input", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "input",
-                {
-                  type: "text",
-                  value: chatInput,
-                  onChange: (event) => setChatInput(event.target.value),
-                  placeholder: "Ask Kigo to help...",
-                  disabled: isSending,
-                  ref: chatInputRef,
-                  onKeyDown: (event) => {
-                    if (event.key === "Enter") sendMessage();
-                  }
-                }
-              ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "primary", onClick: sendMessage, disabled: isSending || !chatInput.trim(), children: isSending ? "Sending..." : "Send" })
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "export-row", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost small", onClick: () => exportSession("markdown"), children: "Export Markdown" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost small", onClick: () => exportSession("json"), children: "Export JSON" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost small", onClick: () => exportAudit("jsonl"), children: "Export Audit" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost small", onClick: () => exportAudit("json"), children: "Export Audit JSON" })
-            ] })
-          ] })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-header", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { children: "Tool Approvals" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "badge neutral", children: [
-              pendingApprovals.length,
-              " pending"
-            ] })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-body", children: [
-            pendingApprovals.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "empty", children: "No pending approvals." }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "approval-list", children: pendingApprovals.map((item) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "approval-card", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mcp-title", children: item.toolName }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mcp-meta", children: [
-                  "Source: ",
-                  item.source
-                ] }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("pre", { className: "approval-params", children: item.params })
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "row-actions", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: () => handleApproval(item.requestId, false), children: "Deny" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "primary", onClick: () => handleApproval(item.requestId, true), children: "Approve" })
-              ] })
-            ] }, item.requestId)) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "divider" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "audit-filters", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    type: "checkbox",
-                    checked: auditFilters.tool_call,
-                    onChange: () => toggleAuditFilter("tool_call")
-                  }
-                ),
-                "Tool Calls"
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    type: "checkbox",
-                    checked: auditFilters.tool_output,
-                    onChange: () => toggleAuditFilter("tool_output")
-                  }
-                ),
-                "Tool Output"
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    type: "checkbox",
-                    checked: auditFilters.approval_request,
-                    onChange: () => toggleAuditFilter("approval_request")
-                  }
-                ),
-                "Approvals"
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    type: "checkbox",
-                    checked: auditFilters.approval_decision,
-                    onChange: () => toggleAuditFilter("approval_decision")
-                  }
-                ),
-                "Decisions"
-              ] })
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "tool-log", children: filteredAudit.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "empty", children: "No tool activity yet." }) : filteredAudit.map((record) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "tool-event", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mcp-title", children: record.type.replace("_", " ") }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mcp-meta", children: JSON.stringify(record.data) })
-            ] }, `${record.type}-${record.timestamp}`)) })
-          ] })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel", ref: skillsRef, children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-header", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { children: "Skills" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "badge neutral", children: [
-              skills.length,
-              " loaded"
-            ] })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-body", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "row-actions", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: refreshSkills, disabled: skillsState.status === "saving", children: "Refresh" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: clearSkill, disabled: !selectedSkill, children: "Clear" })
-            ] }),
-            skillsState.status !== "idle" ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `status status-${skillsState.status}`, children: skillsState.message ?? skillsState.status }) : null,
-            !config?.skills.enabled ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "empty", children: "Skills are disabled in configuration." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "skills-layout", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "skills-list", children: skills.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "empty", children: "No skills found." }) : skills.map((skill) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                "button",
-                {
-                  className: `skills-item ${selectedSkill?.name === skill.name ? "active" : ""}`,
-                  onClick: () => loadSkill(skill.name),
-                  children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mcp-title", children: skill.name }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mcp-meta", children: skill.description })
-                  ]
-                },
-                skill.name
-              )) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "skills-detail", children: [
-                skillsError ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "message error-text", children: skillsError }) : null,
-                !selectedSkill ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "empty", children: "Select a skill to view details." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "skills-card", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mcp-title", children: selectedSkill.name }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mcp-meta", children: selectedSkill.description }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "skill-meta", children: [
-                    "Path: ",
-                    selectedSkill.path
-                  ] }),
-                  selectedSkill.allowedTools && selectedSkill.allowedTools.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "skill-meta", children: [
-                    "Allowed tools: ",
-                    selectedSkill.allowedTools.join(", ")
-                  ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "skill-meta", children: "Allowed tools: all" }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("pre", { className: "skill-content", children: selectedSkill.content })
-                ] })
-              ] })
-            ] })
-          ] })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel", ref: authRef, children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-header", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { children: "Auth" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "badge neutral", children: [
-              authProviders.length,
-              " providers"
-            ] })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-body", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "form-grid", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Provider" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("select", { value: authProvider, onChange: (event) => setAuthProvider(event.target.value), children: /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "google", children: "google" }) })
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Actions" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("section", { className: "content", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Routes, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "/", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Navigate, { to: "/sessions", replace: true }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Route,
+          {
+            path: "/sessions",
+            element: /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+              deleteConfirmId ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "modal-backdrop", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "modal", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Delete session?" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "This will remove the session and its history from local storage." }),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "row-actions", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "primary", onClick: handleAuthLogin, disabled: authState.status === "saving", children: authState.status === "saving" ? "Logging in..." : "Login" }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: refreshAuth, children: "Refresh" })
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: cancelDeleteSession, children: "Cancel" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "primary", onClick: confirmDeleteSession, children: "Delete" })
                 ] })
-              ] })
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "status", children: "Login starts a local callback server on port 8085." }),
-            authState.status !== "idle" ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `status status-${authState.status}`, children: authState.message ?? authState.status }) : null,
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mcp-list", children: authProviders.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "empty", children: "No providers configured." }) : authProviders.map((provider) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mcp-card", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mcp-title", children: provider.provider }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mcp-meta", children: [
-                  provider.email ?? "No email",
-                  provider.expiresAt ? ` · Expires ${new Date(provider.expiresAt).toLocaleString()}` : "",
-                  provider.expired ? " · expired" : ""
-                ] })
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "row-actions", children: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: () => handleAuthRevoke(provider.provider), children: "Revoke" }) })
-            ] }, provider.provider)) })
-          ] })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel", ref: settingsRef, children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-header", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { children: "Configuration" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "badge neutral", children: [
-              mcpCount,
-              " MCP"
-            ] })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-body", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "form-grid", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Model" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    type: "text",
-                    value: config?.model.name ?? "",
-                    onChange: (event) => updateModel({ name: event.target.value }),
-                    disabled: !isReady
-                  }
-                ),
-                getError("model.name") ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "error-text", children: getError("model.name") }) : null
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: `field ${getError("model.provider") ? "has-error" : ""}`, children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Provider" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "select",
-                  {
-                    value: config?.model.provider ?? "openai",
-                    onChange: (event) => updateModel({ provider: event.target.value }),
-                    disabled: !isReady,
-                    children: providerOptions.map((provider) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: provider, children: formatProviderLabel(provider) }, provider))
-                  }
-                ),
-                getError("model.provider") ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "error-text", children: getError("model.provider") }) : null
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: `field ${getError("model.apiKey") ? "has-error" : ""}`, children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "API Key" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    type: "password",
-                    value: config?.model.apiKey ?? "",
-                    onChange: (event) => updateModel({ apiKey: event.target.value || void 0 }),
-                    placeholder: "Stored securely",
-                    disabled: !isReady
-                  }
-                ),
-                getError("model.apiKey") ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "error-text", children: getError("model.apiKey") }) : null
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: `field ${getError("model.baseUrl") ? "has-error" : ""}`, children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Base URL" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    type: "text",
-                    value: config?.model.baseUrl ?? "",
-                    onChange: (event) => updateModel({ baseUrl: event.target.value || void 0 }),
-                    placeholder: "Optional",
-                    disabled: !isReady
-                  }
-                ),
-                getError("model.baseUrl") ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "error-text", children: getError("model.baseUrl") }) : null
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: `field ${getError("model.reasoningEffort") ? "has-error" : ""}`, children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Reasoning Effort" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                  "select",
-                  {
-                    value: config?.model.reasoningEffort ?? "",
-                    onChange: (event) => updateModel({
-                      reasoningEffort: event.target.value ? event.target.value : void 0
-                    }),
-                    disabled: !isReady,
-                    children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Default" }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "none", children: "None" }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "minimal", children: "Minimal" }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "low", children: "Low" }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "medium", children: "Medium" }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "high", children: "High" })
-                    ]
-                  }
-                ),
-                getError("model.reasoningEffort") ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "error-text", children: getError("model.reasoningEffort") }) : null
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: `field ${getError("cli.session") ? "has-error" : ""}`, children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "CLI Session" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    type: "text",
-                    value: config?.cli.session ?? "",
-                    onChange: (event) => updateCli({ session: event.target.value || void 0 }),
-                    placeholder: "Optional session name",
-                    disabled: !isReady
-                  }
-                ),
-                getError("cli.session") ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "error-text", children: getError("cli.session") }) : null
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: `field ${getError("cli.stream") ? "has-error" : ""}`, children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Stream Responses" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "toggle", children: [
+              ] }) }) : null,
+              editingSessionId ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-header", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { children: "Rename Session" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "badge neutral", children: "Editing" })
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "panel-body", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chat-input", children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsx(
                     "input",
                     {
-                      type: "checkbox",
-                      checked: config?.cli.stream ?? true,
-                      onChange: (event) => updateCli({ stream: event.target.checked }),
-                      disabled: !isReady
+                      type: "text",
+                      value: editingTitle,
+                      onChange: (event) => setEditingTitle(event.target.value),
+                      placeholder: "Session title"
                     }
                   ),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: config?.cli.stream ? "Enabled" : "Disabled" })
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "row-actions", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: cancelRenameSession, children: "Cancel" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "primary", onClick: () => confirmRenameSession(editingSessionId), children: "Save" })
+                  ] })
+                ] }) })
+              ] }) : null,
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-header", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { children: "Conversation" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "badge", children: "Streaming" })
                 ] }),
-                getError("cli.stream") ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "error-text", children: getError("cli.stream") }) : null
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: `field ${getError("skills.enabled") ? "has-error" : ""}`, children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Skills" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "toggle", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    "input",
-                    {
-                      type: "checkbox",
-                      checked: config?.skills.enabled ?? true,
-                      onChange: (event) => updateSkills({ enabled: event.target.checked }),
-                      disabled: !isReady
-                    }
-                  ),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: config?.skills.enabled ? "Enabled" : "Disabled" })
-                ] }),
-                getError("skills.enabled") ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "error-text", children: getError("skills.enabled") }) : null
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: `field ${getError("skills.projectSkillsDir") ? "has-error" : ""}`, children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Project Skills Dir" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    type: "text",
-                    value: config?.skills.projectSkillsDir ?? "",
-                    onChange: (event) => updateSkills({ projectSkillsDir: event.target.value }),
-                    disabled: !isReady
-                  }
-                ),
-                getError("skills.projectSkillsDir") ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "error-text", children: getError("skills.projectSkillsDir") }) : null
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: `field ${getError("skills.userSkillsDir") ? "has-error" : ""}`, children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "User Skills Dir" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    type: "text",
-                    value: config?.skills.userSkillsDir ?? "",
-                    onChange: (event) => updateSkills({ userSkillsDir: event.target.value }),
-                    disabled: !isReady
-                  }
-                ),
-                getError("skills.userSkillsDir") ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "error-text", children: getError("skills.userSkillsDir") }) : null
-              ] })
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "divider" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "row-actions", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost small", onClick: () => setShowAdvancedConfig((prev) => !prev), children: showAdvancedConfig ? "Hide Advanced" : "Show Advanced" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost small", onClick: () => setShowRawConfig((prev) => !prev), children: showRawConfig ? "Hide YAML" : "View YAML" })
-            ] }),
-            showAdvancedConfig ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "form-grid", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: `field ${getError("model.azureApiVersion") ? "has-error" : ""}`, children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Azure API Version" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    type: "text",
-                    value: config?.model.azureApiVersion ?? "",
-                    onChange: (event) => updateModel({ azureApiVersion: event.target.value || void 0 }),
-                    placeholder: "2024-06-01",
-                    disabled: !isReady
-                  }
-                ),
-                getError("model.azureApiVersion") ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "error-text", children: getError("model.azureApiVersion") }) : null
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: `field ${getError("model.vertexAiLocation") ? "has-error" : ""}`, children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Vertex Location" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    type: "text",
-                    value: config?.model.vertexAiLocation ?? "",
-                    onChange: (event) => updateModel({ vertexAiLocation: event.target.value || void 0 }),
-                    placeholder: "us-central1",
-                    disabled: !isReady
-                  }
-                ),
-                getError("model.vertexAiLocation") ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "error-text", children: getError("model.vertexAiLocation") }) : null
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: `field ${getError("model.vertexAiCredentialsPath") ? "has-error" : ""}`, children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Vertex Credentials Path" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    type: "text",
-                    value: config?.model.vertexAiCredentialsPath ?? "",
-                    onChange: (event) => updateModel({ vertexAiCredentialsPath: event.target.value || void 0 }),
-                    placeholder: "~/.config/gcloud/application_default_credentials.json",
-                    disabled: !isReady
-                  }
-                ),
-                getError("model.vertexAiCredentialsPath") ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "error-text", children: getError("model.vertexAiCredentialsPath") }) : null
-              ] })
-            ] }) : null,
-            showRawConfig ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "raw-config", children: /* @__PURE__ */ jsxRuntimeExports.jsx("pre", { children: rawConfig }) }) : null,
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "status", children: "LSP is CLI-only. Run `kigo lsp` in a terminal." }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "divider" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "form-grid", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Quick Set Key" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    type: "text",
-                    value: quickKey,
-                    onChange: (event) => setQuickKey(event.target.value),
-                    placeholder: "model.name",
-                    disabled: !isReady
-                  }
-                )
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Quick Set Value" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    type: "text",
-                    value: quickValue,
-                    onChange: (event) => setQuickValue(event.target.value),
-                    placeholder: "gpt-4o",
-                    disabled: !isReady
-                  }
-                )
-              ] })
-            ] }),
-            quickSetState.status !== "idle" ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `status status-${quickSetState.status}`, children: quickSetState.message ?? quickSetState.status }) : null,
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "save-row", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "save-meta", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "path", children: [
-                  "Path: ",
-                  configPath || "Loading..."
-                ] }),
-                saveState.status !== "idle" ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `status status-${saveState.status}`, children: saveState.message ?? saveState.status }) : null
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "row-actions", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: applyQuickSet, disabled: !isReady || quickSetState.status === "saving", children: "Apply Quick Set" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: resetConfig, disabled: !isReady || saveState.status === "saving", children: "Reset Defaults" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "primary", onClick: saveConfig, disabled: !isReady || saveState.status === "saving", children: saveState.status === "saving" ? "Saving..." : "Save Config" })
-              ] })
-            ] })
-          ] })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel", ref: mcpRef, children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-header", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { children: "MCP Servers" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "badge neutral", children: [
-              mcpServers.length,
-              " active"
-            ] })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-body", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mcp-list", children: mcpServers.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "empty", children: "No MCP servers configured." }) : mcpServers.map((server) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mcp-card", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mcp-title", children: server.name }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mcp-meta", children: [
-                  server.transportType,
-                  server.command ? ` · ${server.command}` : "",
-                  server.url ? ` · ${server.url}` : ""
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-body", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "message muted", children: "Welcome to Kigo Desktop." }),
+                  configSummary ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "message muted", children: [
+                    "Config: ",
+                    configSummary.model,
+                    " (",
+                    configSummary.provider,
+                    ") · ",
+                    configSummary.path
+                  ] }) : null,
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chat-messages", children: messages.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "message muted", children: "Send a message to begin a session." }) : messages.map((message, index) => /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `message ${message.role}`, children: message.content || (message.role === "assistant" ? "..." : "") }, `${message.role}-${index}`)) }),
+                  chatError ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "message error-text", children: chatError }) : null,
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chat-input", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        type: "text",
+                        value: chatInput,
+                        onChange: (event) => setChatInput(event.target.value),
+                        placeholder: "Ask Kigo to help...",
+                        disabled: isSending,
+                        ref: chatInputRef,
+                        onKeyDown: (event) => {
+                          if (event.key === "Enter") sendMessage();
+                        }
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "primary", onClick: sendMessage, disabled: isSending || !chatInput.trim(), children: isSending ? "Sending..." : "Send" })
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "export-row", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost small", onClick: () => exportSession("markdown"), children: "Export Markdown" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost small", onClick: () => exportSession("json"), children: "Export JSON" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost small", onClick: () => exportAudit("jsonl"), children: "Export Audit" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost small", onClick: () => exportAudit("json"), children: "Export Audit JSON" })
+                  ] })
                 ] })
               ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "row-actions", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: () => loadServerIntoForm(server), children: "Edit" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: () => removeMcpServer(server.name), children: "Remove" })
-              ] })
-            ] }, server.name)) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "divider" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "form-grid", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Name" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    type: "text",
-                    value: mcpForm.name,
-                    onChange: (event) => setMcpForm({ ...mcpForm, name: event.target.value })
-                  }
-                )
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Transport" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                  "select",
-                  {
-                    value: mcpForm.transportType,
-                    onChange: (event) => setMcpForm({
-                      ...mcpForm,
-                      transportType: event.target.value
-                    }),
-                    children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "stdio", children: "stdio" }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "http", children: "http" }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "sse", children: "sse" })
-                    ]
-                  }
-                )
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Command" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    type: "text",
-                    value: mcpForm.command,
-                    onChange: (event) => setMcpForm({ ...mcpForm, command: event.target.value }),
-                    disabled: mcpForm.transportType !== "stdio",
-                    placeholder: "python -m server"
-                  }
-                )
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Args (comma separated)" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    type: "text",
-                    value: mcpForm.args,
-                    onChange: (event) => setMcpForm({ ...mcpForm, args: event.target.value }),
-                    disabled: mcpForm.transportType !== "stdio",
-                    placeholder: "--flag, value"
-                  }
-                )
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "URL" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    type: "text",
-                    value: mcpForm.url,
-                    onChange: (event) => setMcpForm({ ...mcpForm, url: event.target.value }),
-                    disabled: mcpForm.transportType === "stdio",
-                    placeholder: "http://localhost:8000"
-                  }
-                )
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Headers (key=value, comma separated)" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    type: "text",
-                    value: mcpForm.headers,
-                    onChange: (event) => setMcpForm({ ...mcpForm, headers: event.target.value }),
-                    disabled: mcpForm.transportType === "stdio",
-                    placeholder: "Authorization=Bearer x, X-Client=Kigo"
-                  }
-                )
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Env Vars (key=value, comma separated)" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    type: "text",
-                    value: mcpForm.envVars,
-                    onChange: (event) => setMcpForm({ ...mcpForm, envVars: event.target.value }),
-                    disabled: mcpForm.transportType !== "stdio",
-                    placeholder: "API_KEY=xxx, MODE=dev"
-                  }
-                )
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Allowed Tools (comma separated)" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    type: "text",
-                    value: mcpForm.allowedTools,
-                    onChange: (event) => setMcpForm({ ...mcpForm, allowedTools: event.target.value }),
-                    placeholder: "read_file, write_file"
-                  }
-                )
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Blocked Tools (comma separated)" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    type: "text",
-                    value: mcpForm.blockedTools,
-                    onChange: (event) => setMcpForm({ ...mcpForm, blockedTools: event.target.value }),
-                    placeholder: "run_shell"
-                  }
-                )
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Cache Tools List" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "toggle", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    "input",
-                    {
-                      type: "checkbox",
-                      checked: mcpForm.cacheToolsList,
-                      onChange: (event) => setMcpForm({ ...mcpForm, cacheToolsList: event.target.checked })
-                    }
-                  ),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: mcpForm.cacheToolsList ? "Enabled" : "Disabled" })
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-header", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { children: "Tool Approvals" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "badge neutral", children: [
+                    pendingApprovals.length,
+                    " pending"
+                  ] })
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-body", children: [
+                  pendingApprovals.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "empty", children: "No pending approvals." }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "approval-list", children: pendingApprovals.map((item) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "approval-card", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mcp-title", children: item.toolName }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mcp-meta", children: [
+                        "Source: ",
+                        item.source
+                      ] }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("pre", { className: "approval-params", children: item.params })
+                    ] }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "row-actions", children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: () => handleApproval(item.requestId, false), children: "Deny" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "primary", onClick: () => handleApproval(item.requestId, true), children: "Approve" })
+                    ] })
+                  ] }, item.requestId)) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "divider" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "audit-filters", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "input",
+                        {
+                          type: "checkbox",
+                          checked: auditFilters.tool_call,
+                          onChange: () => toggleAuditFilter("tool_call")
+                        }
+                      ),
+                      "Tool Calls"
+                    ] }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "input",
+                        {
+                          type: "checkbox",
+                          checked: auditFilters.tool_output,
+                          onChange: () => toggleAuditFilter("tool_output")
+                        }
+                      ),
+                      "Tool Output"
+                    ] }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "input",
+                        {
+                          type: "checkbox",
+                          checked: auditFilters.approval_request,
+                          onChange: () => toggleAuditFilter("approval_request")
+                        }
+                      ),
+                      "Approvals"
+                    ] }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "input",
+                        {
+                          type: "checkbox",
+                          checked: auditFilters.approval_decision,
+                          onChange: () => toggleAuditFilter("approval_decision")
+                        }
+                      ),
+                      "Decisions"
+                    ] })
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "tool-log", children: filteredAudit.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "empty", children: "No tool activity yet." }) : filteredAudit.map((record) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "tool-event", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mcp-title", children: record.type.replace("_", " ") }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mcp-meta", children: JSON.stringify(record.data) })
+                  ] }, `${record.type}-${record.timestamp}`)) })
                 ] })
               ] })
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "save-row", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "save-meta", children: mcpState.status !== "idle" ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `status status-${mcpState.status}`, children: mcpState.message ?? mcpState.status }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "status", children: "Manage MCP servers for this workspace." }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "row-actions", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: testMcpServer, disabled: mcpState.status === "saving", children: "Test" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "primary", onClick: addMcpServer, disabled: mcpState.status === "saving", children: mcpState.status === "saving" ? "Saving..." : "Save Server" })
+            ] })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Route,
+          {
+            path: "/skills",
+            element: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-header", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { children: "Skills" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "badge neutral", children: [
+                  skills.length,
+                  " loaded"
+                ] })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-body", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "row-actions", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: refreshSkills, disabled: skillsState.status === "saving", children: "Refresh" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: clearSkill, disabled: !selectedSkill, children: "Clear" })
+                ] }),
+                skillsState.status !== "idle" ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `status status-${skillsState.status}`, children: skillsState.message ?? skillsState.status }) : null,
+                !config?.skills.enabled ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "empty", children: "Skills are disabled in configuration." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "skills-layout", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "skills-list", children: skills.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "empty", children: "No skills found." }) : skills.map((skill) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                    "button",
+                    {
+                      className: `skills-item ${selectedSkill?.name === skill.name ? "active" : ""}`,
+                      onClick: () => loadSkill(skill.name),
+                      children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mcp-title", children: skill.name }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mcp-meta", children: skill.description })
+                      ]
+                    },
+                    skill.name
+                  )) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "skills-detail", children: [
+                    skillsError ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "message error-text", children: skillsError }) : null,
+                    !selectedSkill ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "empty", children: "Select a skill to view details." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "skills-card", children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mcp-title", children: selectedSkill.name }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mcp-meta", children: selectedSkill.description }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "skill-meta", children: [
+                        "Path: ",
+                        selectedSkill.path
+                      ] }),
+                      selectedSkill.allowedTools && selectedSkill.allowedTools.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "skill-meta", children: [
+                        "Allowed tools: ",
+                        selectedSkill.allowedTools.join(", ")
+                      ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "skill-meta", children: "Allowed tools: all" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("pre", { className: "skill-content", children: selectedSkill.content })
+                    ] })
+                  ] })
+                ] })
               ] })
             ] })
-          ] })
-        ] })
-      ] }),
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Route,
+          {
+            path: "/auth",
+            element: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-header", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { children: "Auth" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "badge neutral", children: [
+                  authProviders.length,
+                  " providers"
+                ] })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-body", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "form-grid", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Provider" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("select", { value: authProvider, onChange: (event) => setAuthProvider(event.target.value), children: /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "google", children: "google" }) })
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Actions" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "row-actions", children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "primary", onClick: handleAuthLogin, disabled: authState.status === "saving", children: authState.status === "saving" ? "Logging in..." : "Login" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: refreshAuth, children: "Refresh" })
+                    ] })
+                  ] })
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "status", children: "Login starts a local callback server on port 8085." }),
+                authState.status !== "idle" ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `status status-${authState.status}`, children: authState.message ?? authState.status }) : null,
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mcp-list", children: authProviders.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "empty", children: "No providers configured." }) : authProviders.map((provider) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mcp-card", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mcp-title", children: provider.provider }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mcp-meta", children: [
+                      provider.email ?? "No email",
+                      provider.expiresAt ? ` · Expires ${new Date(provider.expiresAt).toLocaleString()}` : "",
+                      provider.expired ? " · expired" : ""
+                    ] })
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "row-actions", children: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: () => handleAuthRevoke(provider.provider), children: "Revoke" }) })
+                ] }, provider.provider)) })
+              ] })
+            ] })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Route,
+          {
+            path: "/settings",
+            element: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-header", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { children: "Configuration" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "badge neutral", children: [
+                  mcpCount,
+                  " MCP"
+                ] })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-body", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "form-grid", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Model" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        type: "text",
+                        value: config?.model.name ?? "",
+                        onChange: (event) => updateModel({ name: event.target.value }),
+                        disabled: !isReady
+                      }
+                    ),
+                    getError("model.name") ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "error-text", children: getError("model.name") }) : null
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: `field ${getError("model.provider") ? "has-error" : ""}`, children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Provider" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "select",
+                      {
+                        value: config?.model.provider ?? "openai",
+                        onChange: (event) => updateModel({ provider: event.target.value }),
+                        disabled: !isReady,
+                        children: providerOptions.map((provider) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: provider, children: formatProviderLabel(provider) }, provider))
+                      }
+                    ),
+                    getError("model.provider") ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "error-text", children: getError("model.provider") }) : null
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: `field ${getError("model.apiKey") ? "has-error" : ""}`, children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "API Key" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        type: "password",
+                        value: config?.model.apiKey ?? "",
+                        onChange: (event) => updateModel({ apiKey: event.target.value || void 0 }),
+                        placeholder: "Stored securely",
+                        disabled: !isReady
+                      }
+                    ),
+                    getError("model.apiKey") ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "error-text", children: getError("model.apiKey") }) : null
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: `field ${getError("model.baseUrl") ? "has-error" : ""}`, children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Base URL" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        type: "text",
+                        value: config?.model.baseUrl ?? "",
+                        onChange: (event) => updateModel({ baseUrl: event.target.value || void 0 }),
+                        placeholder: "Optional",
+                        disabled: !isReady
+                      }
+                    ),
+                    getError("model.baseUrl") ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "error-text", children: getError("model.baseUrl") }) : null
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: `field ${getError("model.reasoningEffort") ? "has-error" : ""}`, children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Reasoning Effort" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                      "select",
+                      {
+                        value: config?.model.reasoningEffort ?? "",
+                        onChange: (event) => updateModel({
+                          reasoningEffort: event.target.value ? event.target.value : void 0
+                        }),
+                        disabled: !isReady,
+                        children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "Default" }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "none", children: "None" }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "minimal", children: "Minimal" }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "low", children: "Low" }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "medium", children: "Medium" }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "high", children: "High" })
+                        ]
+                      }
+                    ),
+                    getError("model.reasoningEffort") ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "error-text", children: getError("model.reasoningEffort") }) : null
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: `field ${getError("cli.session") ? "has-error" : ""}`, children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "CLI Session" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        type: "text",
+                        value: config?.cli.session ?? "",
+                        onChange: (event) => updateCli({ session: event.target.value || void 0 }),
+                        placeholder: "Optional session name",
+                        disabled: !isReady
+                      }
+                    ),
+                    getError("cli.session") ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "error-text", children: getError("cli.session") }) : null
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: `field ${getError("cli.stream") ? "has-error" : ""}`, children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Stream Responses" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "toggle", children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "input",
+                        {
+                          type: "checkbox",
+                          checked: config?.cli.stream ?? true,
+                          onChange: (event) => updateCli({ stream: event.target.checked }),
+                          disabled: !isReady
+                        }
+                      ),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: config?.cli.stream ? "Enabled" : "Disabled" })
+                    ] }),
+                    getError("cli.stream") ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "error-text", children: getError("cli.stream") }) : null
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: `field ${getError("skills.enabled") ? "has-error" : ""}`, children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Skills" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "toggle", children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "input",
+                        {
+                          type: "checkbox",
+                          checked: config?.skills.enabled ?? true,
+                          onChange: (event) => updateSkills({ enabled: event.target.checked }),
+                          disabled: !isReady
+                        }
+                      ),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: config?.skills.enabled ? "Enabled" : "Disabled" })
+                    ] }),
+                    getError("skills.enabled") ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "error-text", children: getError("skills.enabled") }) : null
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: `field ${getError("skills.projectSkillsDir") ? "has-error" : ""}`, children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Project Skills Dir" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        type: "text",
+                        value: config?.skills.projectSkillsDir ?? "",
+                        onChange: (event) => updateSkills({ projectSkillsDir: event.target.value }),
+                        disabled: !isReady
+                      }
+                    ),
+                    getError("skills.projectSkillsDir") ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "error-text", children: getError("skills.projectSkillsDir") }) : null
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: `field ${getError("skills.userSkillsDir") ? "has-error" : ""}`, children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "User Skills Dir" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        type: "text",
+                        value: config?.skills.userSkillsDir ?? "",
+                        onChange: (event) => updateSkills({ userSkillsDir: event.target.value }),
+                        disabled: !isReady
+                      }
+                    ),
+                    getError("skills.userSkillsDir") ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "error-text", children: getError("skills.userSkillsDir") }) : null
+                  ] })
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "divider" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "row-actions", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost small", onClick: () => setShowAdvancedConfig((prev) => !prev), children: showAdvancedConfig ? "Hide Advanced" : "Show Advanced" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost small", onClick: () => setShowRawConfig((prev) => !prev), children: showRawConfig ? "Hide YAML" : "View YAML" })
+                ] }),
+                showAdvancedConfig ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "form-grid", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: `field ${getError("model.azureApiVersion") ? "has-error" : ""}`, children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Azure API Version" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        type: "text",
+                        value: config?.model.azureApiVersion ?? "",
+                        onChange: (event) => updateModel({ azureApiVersion: event.target.value || void 0 }),
+                        placeholder: "2024-06-01",
+                        disabled: !isReady
+                      }
+                    ),
+                    getError("model.azureApiVersion") ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "error-text", children: getError("model.azureApiVersion") }) : null
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: `field ${getError("model.vertexAiLocation") ? "has-error" : ""}`, children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Vertex Location" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        type: "text",
+                        value: config?.model.vertexAiLocation ?? "",
+                        onChange: (event) => updateModel({ vertexAiLocation: event.target.value || void 0 }),
+                        placeholder: "us-central1",
+                        disabled: !isReady
+                      }
+                    ),
+                    getError("model.vertexAiLocation") ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "error-text", children: getError("model.vertexAiLocation") }) : null
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: `field ${getError("model.vertexAiCredentialsPath") ? "has-error" : ""}`, children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Vertex Credentials Path" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        type: "text",
+                        value: config?.model.vertexAiCredentialsPath ?? "",
+                        onChange: (event) => updateModel({ vertexAiCredentialsPath: event.target.value || void 0 }),
+                        placeholder: "~/.config/gcloud/application_default_credentials.json",
+                        disabled: !isReady
+                      }
+                    ),
+                    getError("model.vertexAiCredentialsPath") ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "error-text", children: getError("model.vertexAiCredentialsPath") }) : null
+                  ] })
+                ] }) : null,
+                showRawConfig ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "raw-config", children: /* @__PURE__ */ jsxRuntimeExports.jsx("pre", { children: rawConfig }) }) : null,
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "status", children: "LSP is CLI-only. Run `kigo lsp` in a terminal." }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "divider" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "form-grid", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Quick Set Key" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        type: "text",
+                        value: quickKey,
+                        onChange: (event) => setQuickKey(event.target.value),
+                        placeholder: "model.name",
+                        disabled: !isReady
+                      }
+                    )
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Quick Set Value" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        type: "text",
+                        value: quickValue,
+                        onChange: (event) => setQuickValue(event.target.value),
+                        placeholder: "gpt-4o",
+                        disabled: !isReady
+                      }
+                    )
+                  ] })
+                ] }),
+                quickSetState.status !== "idle" ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `status status-${quickSetState.status}`, children: quickSetState.message ?? quickSetState.status }) : null,
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "save-row", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "save-meta", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "path", children: [
+                      "Path: ",
+                      configPath || "Loading..."
+                    ] }),
+                    saveState.status !== "idle" ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `status status-${saveState.status}`, children: saveState.message ?? saveState.status }) : null
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "row-actions", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "button",
+                      {
+                        className: "ghost",
+                        onClick: applyQuickSet,
+                        disabled: !isReady || quickSetState.status === "saving",
+                        children: "Apply Quick Set"
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: resetConfig, disabled: !isReady || saveState.status === "saving", children: "Reset Defaults" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "primary", onClick: saveConfig, disabled: !isReady || saveState.status === "saving", children: saveState.status === "saving" ? "Saving..." : "Save Config" })
+                  ] })
+                ] })
+              ] })
+            ] })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Route,
+          {
+            path: "/mcp",
+            element: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-header", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { children: "MCP Servers" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "badge neutral", children: [
+                  mcpServers.length,
+                  " active"
+                ] })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-body", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mcp-list", children: mcpServers.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "empty", children: "No MCP servers configured." }) : mcpServers.map((server) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mcp-card", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mcp-title", children: server.name }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mcp-meta", children: [
+                      server.transportType,
+                      server.command ? ` · ${server.command}` : "",
+                      server.url ? ` · ${server.url}` : ""
+                    ] })
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "row-actions", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: () => loadServerIntoForm(server), children: "Edit" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: () => removeMcpServer(server.name), children: "Remove" })
+                  ] })
+                ] }, server.name)) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "divider" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "form-grid", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Name" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        type: "text",
+                        value: mcpForm.name,
+                        onChange: (event) => setMcpForm({ ...mcpForm, name: event.target.value })
+                      }
+                    )
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Transport" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                      "select",
+                      {
+                        value: mcpForm.transportType,
+                        onChange: (event) => setMcpForm({
+                          ...mcpForm,
+                          transportType: event.target.value
+                        }),
+                        children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "stdio", children: "stdio" }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "http", children: "http" }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "sse", children: "sse" })
+                        ]
+                      }
+                    )
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Command" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        type: "text",
+                        value: mcpForm.command,
+                        onChange: (event) => setMcpForm({ ...mcpForm, command: event.target.value }),
+                        disabled: mcpForm.transportType !== "stdio",
+                        placeholder: "python -m server"
+                      }
+                    )
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Args (comma separated)" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        type: "text",
+                        value: mcpForm.args,
+                        onChange: (event) => setMcpForm({ ...mcpForm, args: event.target.value }),
+                        disabled: mcpForm.transportType !== "stdio",
+                        placeholder: "--flag, value"
+                      }
+                    )
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "URL" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        type: "text",
+                        value: mcpForm.url,
+                        onChange: (event) => setMcpForm({ ...mcpForm, url: event.target.value }),
+                        disabled: mcpForm.transportType === "stdio",
+                        placeholder: "http://localhost:8000"
+                      }
+                    )
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Headers (key=value, comma separated)" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        type: "text",
+                        value: mcpForm.headers,
+                        onChange: (event) => setMcpForm({ ...mcpForm, headers: event.target.value }),
+                        disabled: mcpForm.transportType === "stdio",
+                        placeholder: "Authorization=Bearer x, X-Client=Kigo"
+                      }
+                    )
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Env Vars (key=value, comma separated)" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        type: "text",
+                        value: mcpForm.envVars,
+                        onChange: (event) => setMcpForm({ ...mcpForm, envVars: event.target.value }),
+                        disabled: mcpForm.transportType !== "stdio",
+                        placeholder: "API_KEY=xxx, MODE=dev"
+                      }
+                    )
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Allowed Tools (comma separated)" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        type: "text",
+                        value: mcpForm.allowedTools,
+                        onChange: (event) => setMcpForm({ ...mcpForm, allowedTools: event.target.value }),
+                        placeholder: "read_file, write_file"
+                      }
+                    )
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Blocked Tools (comma separated)" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        type: "text",
+                        value: mcpForm.blockedTools,
+                        onChange: (event) => setMcpForm({ ...mcpForm, blockedTools: event.target.value }),
+                        placeholder: "run_shell"
+                      }
+                    )
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "field", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Cache Tools List" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "toggle", children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "input",
+                        {
+                          type: "checkbox",
+                          checked: mcpForm.cacheToolsList,
+                          onChange: (event) => setMcpForm({ ...mcpForm, cacheToolsList: event.target.checked })
+                        }
+                      ),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: mcpForm.cacheToolsList ? "Enabled" : "Disabled" })
+                    ] })
+                  ] })
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "save-row", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "save-meta", children: mcpState.status !== "idle" ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `status status-${mcpState.status}`, children: mcpState.message ?? mcpState.status }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "status", children: "Manage MCP servers for this workspace." }) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "row-actions", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: testMcpServer, disabled: mcpState.status === "saving", children: "Test" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "primary", onClick: addMcpServer, disabled: mcpState.status === "saving", children: mcpState.status === "saving" ? "Saving..." : "Save Server" })
+                  ] })
+                ] })
+              ] })
+            ] })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Route, { path: "*", element: /* @__PURE__ */ jsxRuntimeExports.jsx(Navigate, { to: "/sessions", replace: true }) })
+      ] }) }),
       toast ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `toast ${toast.tone}`, children: toast.message }) : null
     ] })
   ] });
@@ -14776,5 +16296,5 @@ function App() {
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing root element");
 createRoot(root).render(
-  /* @__PURE__ */ jsxRuntimeExports.jsx(React.StrictMode, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) })
+  /* @__PURE__ */ jsxRuntimeExports.jsx(React.StrictMode, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(HashRouter, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) }) })
 );

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import yaml from 'js-yaml';
 import { KigoConfigSchema, type KigoConfig, type MCPServerConfig } from '@kigo/config/schema';
 
@@ -12,8 +13,6 @@ type SaveState = {
   status: 'idle' | 'saving' | 'saved' | 'error';
   message?: string;
 };
-
-type SectionId = 'sessions' | 'mcp' | 'skills' | 'settings' | 'auth';
 
 type MCPFormState = {
   name: string;
@@ -107,7 +106,6 @@ export default function App() {
   const [sessionFilter, setSessionFilter] = useState<'all' | 'today' | 'week'>('all');
   const [sessionSort, setSessionSort] = useState<'updated' | 'created' | 'messages'>('updated');
   const [sessionSortDir, setSessionSortDir] = useState<'desc' | 'asc'>('desc');
-  const [activeSection, setActiveSection] = useState<SectionId>('sessions');
   const [showAdvancedConfig, setShowAdvancedConfig] = useState(false);
   const [showRawConfig, setShowRawConfig] = useState(false);
   const [auditFilters, setAuditFilters] = useState<Record<AuditRecord['type'], boolean>>({
@@ -119,11 +117,6 @@ export default function App() {
 
   const chatInputRef = useRef<HTMLInputElement | null>(null);
   const sessionSearchRef = useRef<HTMLInputElement | null>(null);
-  const sessionsRef = useRef<HTMLDivElement | null>(null);
-  const mcpRef = useRef<HTMLDivElement | null>(null);
-  const skillsRef = useRef<HTMLDivElement | null>(null);
-  const settingsRef = useRef<HTMLDivElement | null>(null);
-  const authRef = useRef<HTMLDivElement | null>(null);
   const [mcpForm, setMcpForm] = useState<MCPFormState>({
     name: '',
     transportType: 'stdio',
@@ -141,18 +134,6 @@ export default function App() {
     if (!window.kigo?.session) return;
     const result = await window.kigo.session.list();
     setSessions(result.sessions);
-  };
-
-  const scrollToSection = (section: SectionId) => {
-    setActiveSection(section);
-    const map: Record<SectionId, { current: HTMLDivElement | null }> = {
-      sessions: sessionsRef,
-      mcp: mcpRef,
-      skills: skillsRef,
-      settings: settingsRef,
-      auth: authRef
-    };
-    map[section].current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const filteredSessions = useMemo(() => {
@@ -930,36 +911,21 @@ export default function App() {
           <span>Kigo Desktop</span>
         </div>
         <nav className="nav">
-          <button
-            className={`nav-item ${activeSection === 'sessions' ? 'is-active' : ''}`}
-            onClick={() => scrollToSection('sessions')}
-          >
+          <NavLink to="/sessions" end className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}>
             Sessions
-          </button>
-          <button
-            className={`nav-item ${activeSection === 'mcp' ? 'is-active' : ''}`}
-            onClick={() => scrollToSection('mcp')}
-          >
+          </NavLink>
+          <NavLink to="/mcp" className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}>
             MCP Servers
-          </button>
-          <button
-            className={`nav-item ${activeSection === 'skills' ? 'is-active' : ''}`}
-            onClick={() => scrollToSection('skills')}
-          >
+          </NavLink>
+          <NavLink to="/skills" className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}>
             Skills
-          </button>
-          <button
-            className={`nav-item ${activeSection === 'auth' ? 'is-active' : ''}`}
-            onClick={() => scrollToSection('auth')}
-          >
+          </NavLink>
+          <NavLink to="/auth" className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}>
             Auth
-          </button>
-          <button
-            className={`nav-item ${activeSection === 'settings' ? 'is-active' : ''}`}
-            onClick={() => scrollToSection('settings')}
-          >
+          </NavLink>
+          <NavLink to="/settings" className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}>
             Settings
-          </button>
+          </NavLink>
         </nav>
         <div className="sessions">
           <div className="sessions-header">
@@ -1036,718 +1002,751 @@ export default function App() {
         </header>
 
         <section className="content">
-          {deleteConfirmId ? (
-            <div className="modal-backdrop">
-              <div className="modal">
-                <h3>Delete session?</h3>
-                <p>This will remove the session and its history from local storage.</p>
-                <div className="row-actions">
-                  <button className="ghost" onClick={cancelDeleteSession}>
-                    Cancel
-                  </button>
-                  <button className="primary" onClick={confirmDeleteSession}>
-                    Delete
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : null}
-          {editingSessionId ? (
-            <div className="panel">
-              <div className="panel-header">
-                <h2>Rename Session</h2>
-                <span className="badge neutral">Editing</span>
-              </div>
-              <div className="panel-body">
-                <div className="chat-input">
-                  <input
-                    type="text"
-                    value={editingTitle}
-                    onChange={(event) => setEditingTitle(event.target.value)}
-                    placeholder="Session title"
-                  />
-                  <div className="row-actions">
-                    <button className="ghost" onClick={cancelRenameSession}>
-                      Cancel
-                    </button>
-                    <button className="primary" onClick={() => confirmRenameSession(editingSessionId)}>
-                      Save
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : null}
-          <div className="panel" ref={sessionsRef}>
-            <div className="panel-header">
-              <h2>Conversation</h2>
-              <span className="badge">Streaming</span>
-            </div>
-            <div className="panel-body">
-              <div className="message muted">Welcome to Kigo Desktop.</div>
-              {configSummary ? (
-                <div className="message muted">
-                  Config: {configSummary.model} ({configSummary.provider}) · {configSummary.path}
-                </div>
-              ) : null}
-              <div className="chat-messages">
-                {messages.length === 0 ? (
-                  <div className="message muted">Send a message to begin a session.</div>
-                ) : (
-                  messages.map((message, index) => (
-                    <div key={`${message.role}-${index}`} className={`message ${message.role}`}>
-                      {message.content || (message.role === 'assistant' ? '...' : '')}
-                    </div>
-                  ))
-                )}
-              </div>
-              {chatError ? <div className="message error-text">{chatError}</div> : null}
-              <div className="chat-input">
-                <input
-                  type="text"
-                  value={chatInput}
-                  onChange={(event) => setChatInput(event.target.value)}
-                  placeholder="Ask Kigo to help..."
-                  disabled={isSending}
-                  ref={chatInputRef}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') sendMessage();
-                  }}
-                />
-                <button className="primary" onClick={sendMessage} disabled={isSending || !chatInput.trim()}>
-                  {isSending ? 'Sending...' : 'Send'}
-                </button>
-              </div>
-              <div className="export-row">
-                <button className="ghost small" onClick={() => exportSession('markdown')}>
-                  Export Markdown
-                </button>
-                <button className="ghost small" onClick={() => exportSession('json')}>
-                  Export JSON
-                </button>
-                <button className="ghost small" onClick={() => exportAudit('jsonl')}>
-                  Export Audit
-                </button>
-                <button className="ghost small" onClick={() => exportAudit('json')}>
-                  Export Audit JSON
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="panel">
-            <div className="panel-header">
-              <h2>Tool Approvals</h2>
-              <span className="badge neutral">{pendingApprovals.length} pending</span>
-            </div>
-            <div className="panel-body">
-              {pendingApprovals.length === 0 ? (
-                <div className="empty">No pending approvals.</div>
-              ) : (
-                <div className="approval-list">
-                  {pendingApprovals.map((item) => (
-                    <div key={item.requestId} className="approval-card">
-                      <div>
-                        <div className="mcp-title">{item.toolName}</div>
-                        <div className="mcp-meta">Source: {item.source}</div>
-                        <pre className="approval-params">{item.params}</pre>
-                      </div>
-                      <div className="row-actions">
-                        <button className="ghost" onClick={() => handleApproval(item.requestId, false)}>
-                          Deny
-                        </button>
-                        <button className="primary" onClick={() => handleApproval(item.requestId, true)}>
-                          Approve
-                        </button>
+          <Routes>
+            <Route path="/" element={<Navigate to="/sessions" replace />} />
+            <Route
+              path="/sessions"
+              element={
+                <>
+                  {deleteConfirmId ? (
+                    <div className="modal-backdrop">
+                      <div className="modal">
+                        <h3>Delete session?</h3>
+                        <p>This will remove the session and its history from local storage.</p>
+                        <div className="row-actions">
+                          <button className="ghost" onClick={cancelDeleteSession}>
+                            Cancel
+                          </button>
+                          <button className="primary" onClick={confirmDeleteSession}>
+                            Delete
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="divider" />
-              <div className="audit-filters">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={auditFilters.tool_call}
-                    onChange={() => toggleAuditFilter('tool_call')}
-                  />
-                  Tool Calls
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={auditFilters.tool_output}
-                    onChange={() => toggleAuditFilter('tool_output')}
-                  />
-                  Tool Output
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={auditFilters.approval_request}
-                    onChange={() => toggleAuditFilter('approval_request')}
-                  />
-                  Approvals
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={auditFilters.approval_decision}
-                    onChange={() => toggleAuditFilter('approval_decision')}
-                  />
-                  Decisions
-                </label>
-              </div>
-              <div className="tool-log">
-                {filteredAudit.length === 0 ? (
-                  <div className="empty">No tool activity yet.</div>
-                ) : (
-                  filteredAudit.map((record) => (
-                    <div key={`${record.type}-${record.timestamp}`} className="tool-event">
-                      <div className="mcp-title">{record.type.replace('_', ' ')}</div>
-                      <div className="mcp-meta">{JSON.stringify(record.data)}</div>
+                  ) : null}
+                  {editingSessionId ? (
+                    <div className="panel">
+                      <div className="panel-header">
+                        <h2>Rename Session</h2>
+                        <span className="badge neutral">Editing</span>
+                      </div>
+                      <div className="panel-body">
+                        <div className="chat-input">
+                          <input
+                            type="text"
+                            value={editingTitle}
+                            onChange={(event) => setEditingTitle(event.target.value)}
+                            placeholder="Session title"
+                          />
+                          <div className="row-actions">
+                            <button className="ghost" onClick={cancelRenameSession}>
+                              Cancel
+                            </button>
+                            <button className="primary" onClick={() => confirmRenameSession(editingSessionId)}>
+                              Save
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="panel" ref={skillsRef}>
-            <div className="panel-header">
-              <h2>Skills</h2>
-              <span className="badge neutral">{skills.length} loaded</span>
-            </div>
-            <div className="panel-body">
-              <div className="row-actions">
-                <button className="ghost" onClick={refreshSkills} disabled={skillsState.status === 'saving'}>
-                  Refresh
-                </button>
-                <button className="ghost" onClick={clearSkill} disabled={!selectedSkill}>
-                  Clear
-                </button>
-              </div>
-              {skillsState.status !== 'idle' ? (
-                <div className={`status status-${skillsState.status}`}>{skillsState.message ?? skillsState.status}</div>
-              ) : null}
-              {!config?.skills.enabled ? (
-                <div className="empty">Skills are disabled in configuration.</div>
-              ) : (
-                <div className="skills-layout">
-                  <div className="skills-list">
-                    {skills.length === 0 ? (
-                      <div className="empty">No skills found.</div>
-                    ) : (
-                      skills.map((skill) => (
-                        <button
-                          key={skill.name}
-                          className={`skills-item ${selectedSkill?.name === skill.name ? 'active' : ''}`}
-                          onClick={() => loadSkill(skill.name)}
-                        >
-                          <div className="mcp-title">{skill.name}</div>
-                          <div className="mcp-meta">{skill.description}</div>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                  <div className="skills-detail">
-                    {skillsError ? <div className="message error-text">{skillsError}</div> : null}
-                    {!selectedSkill ? (
-                      <div className="empty">Select a skill to view details.</div>
-                    ) : (
-                      <div className="skills-card">
-                        <div className="mcp-title">{selectedSkill.name}</div>
-                        <div className="mcp-meta">{selectedSkill.description}</div>
-                        <div className="skill-meta">Path: {selectedSkill.path}</div>
-                        {selectedSkill.allowedTools && selectedSkill.allowedTools.length > 0 ? (
-                          <div className="skill-meta">Allowed tools: {selectedSkill.allowedTools.join(', ')}</div>
+                  ) : null}
+                  <div className="panel">
+                    <div className="panel-header">
+                      <h2>Conversation</h2>
+                      <span className="badge">Streaming</span>
+                    </div>
+                    <div className="panel-body">
+                      <div className="message muted">Welcome to Kigo Desktop.</div>
+                      {configSummary ? (
+                        <div className="message muted">
+                          Config: {configSummary.model} ({configSummary.provider}) · {configSummary.path}
+                        </div>
+                      ) : null}
+                      <div className="chat-messages">
+                        {messages.length === 0 ? (
+                          <div className="message muted">Send a message to begin a session.</div>
                         ) : (
-                          <div className="skill-meta">Allowed tools: all</div>
+                          messages.map((message, index) => (
+                            <div key={`${message.role}-${index}`} className={`message ${message.role}`}>
+                              {message.content || (message.role === 'assistant' ? '...' : '')}
+                            </div>
+                          ))
                         )}
-                        <pre className="skill-content">{selectedSkill.content}</pre>
+                      </div>
+                      {chatError ? <div className="message error-text">{chatError}</div> : null}
+                      <div className="chat-input">
+                        <input
+                          type="text"
+                          value={chatInput}
+                          onChange={(event) => setChatInput(event.target.value)}
+                          placeholder="Ask Kigo to help..."
+                          disabled={isSending}
+                          ref={chatInputRef}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') sendMessage();
+                          }}
+                        />
+                        <button className="primary" onClick={sendMessage} disabled={isSending || !chatInput.trim()}>
+                          {isSending ? 'Sending...' : 'Send'}
+                        </button>
+                      </div>
+                      <div className="export-row">
+                        <button className="ghost small" onClick={() => exportSession('markdown')}>
+                          Export Markdown
+                        </button>
+                        <button className="ghost small" onClick={() => exportSession('json')}>
+                          Export JSON
+                        </button>
+                        <button className="ghost small" onClick={() => exportAudit('jsonl')}>
+                          Export Audit
+                        </button>
+                        <button className="ghost small" onClick={() => exportAudit('json')}>
+                          Export Audit JSON
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="panel">
+                    <div className="panel-header">
+                      <h2>Tool Approvals</h2>
+                      <span className="badge neutral">{pendingApprovals.length} pending</span>
+                    </div>
+                    <div className="panel-body">
+                      {pendingApprovals.length === 0 ? (
+                        <div className="empty">No pending approvals.</div>
+                      ) : (
+                        <div className="approval-list">
+                          {pendingApprovals.map((item) => (
+                            <div key={item.requestId} className="approval-card">
+                              <div>
+                                <div className="mcp-title">{item.toolName}</div>
+                                <div className="mcp-meta">Source: {item.source}</div>
+                                <pre className="approval-params">{item.params}</pre>
+                              </div>
+                              <div className="row-actions">
+                                <button className="ghost" onClick={() => handleApproval(item.requestId, false)}>
+                                  Deny
+                                </button>
+                                <button className="primary" onClick={() => handleApproval(item.requestId, true)}>
+                                  Approve
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="divider" />
+                      <div className="audit-filters">
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={auditFilters.tool_call}
+                            onChange={() => toggleAuditFilter('tool_call')}
+                          />
+                          Tool Calls
+                        </label>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={auditFilters.tool_output}
+                            onChange={() => toggleAuditFilter('tool_output')}
+                          />
+                          Tool Output
+                        </label>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={auditFilters.approval_request}
+                            onChange={() => toggleAuditFilter('approval_request')}
+                          />
+                          Approvals
+                        </label>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={auditFilters.approval_decision}
+                            onChange={() => toggleAuditFilter('approval_decision')}
+                          />
+                          Decisions
+                        </label>
+                      </div>
+                      <div className="tool-log">
+                        {filteredAudit.length === 0 ? (
+                          <div className="empty">No tool activity yet.</div>
+                        ) : (
+                          filteredAudit.map((record) => (
+                            <div key={`${record.type}-${record.timestamp}`} className="tool-event">
+                              <div className="mcp-title">{record.type.replace('_', ' ')}</div>
+                              <div className="mcp-meta">{JSON.stringify(record.data)}</div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              }
+            />
+            <Route
+              path="/skills"
+              element={
+                <div className="panel">
+                  <div className="panel-header">
+                    <h2>Skills</h2>
+                    <span className="badge neutral">{skills.length} loaded</span>
+                  </div>
+                  <div className="panel-body">
+                    <div className="row-actions">
+                      <button className="ghost" onClick={refreshSkills} disabled={skillsState.status === 'saving'}>
+                        Refresh
+                      </button>
+                      <button className="ghost" onClick={clearSkill} disabled={!selectedSkill}>
+                        Clear
+                      </button>
+                    </div>
+                    {skillsState.status !== 'idle' ? (
+                      <div className={`status status-${skillsState.status}`}>{skillsState.message ?? skillsState.status}</div>
+                    ) : null}
+                    {!config?.skills.enabled ? (
+                      <div className="empty">Skills are disabled in configuration.</div>
+                    ) : (
+                      <div className="skills-layout">
+                        <div className="skills-list">
+                          {skills.length === 0 ? (
+                            <div className="empty">No skills found.</div>
+                          ) : (
+                            skills.map((skill) => (
+                              <button
+                                key={skill.name}
+                                className={`skills-item ${selectedSkill?.name === skill.name ? 'active' : ''}`}
+                                onClick={() => loadSkill(skill.name)}
+                              >
+                                <div className="mcp-title">{skill.name}</div>
+                                <div className="mcp-meta">{skill.description}</div>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                        <div className="skills-detail">
+                          {skillsError ? <div className="message error-text">{skillsError}</div> : null}
+                          {!selectedSkill ? (
+                            <div className="empty">Select a skill to view details.</div>
+                          ) : (
+                            <div className="skills-card">
+                              <div className="mcp-title">{selectedSkill.name}</div>
+                              <div className="mcp-meta">{selectedSkill.description}</div>
+                              <div className="skill-meta">Path: {selectedSkill.path}</div>
+                              {selectedSkill.allowedTools && selectedSkill.allowedTools.length > 0 ? (
+                                <div className="skill-meta">Allowed tools: {selectedSkill.allowedTools.join(', ')}</div>
+                              ) : (
+                                <div className="skill-meta">Allowed tools: all</div>
+                              )}
+                              <pre className="skill-content">{selectedSkill.content}</pre>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
                 </div>
-              )}
-            </div>
-          </div>
-
-          <div className="panel" ref={authRef}>
-            <div className="panel-header">
-              <h2>Auth</h2>
-              <span className="badge neutral">{authProviders.length} providers</span>
-            </div>
-            <div className="panel-body">
-              <div className="form-grid">
-                <label className="field">
-                  <span>Provider</span>
-                  <select value={authProvider} onChange={(event) => setAuthProvider(event.target.value)}>
-                    <option value="google">google</option>
-                  </select>
-                </label>
-                <label className="field">
-                  <span>Actions</span>
-                  <div className="row-actions">
-                    <button className="primary" onClick={handleAuthLogin} disabled={authState.status === 'saving'}>
-                      {authState.status === 'saving' ? 'Logging in...' : 'Login'}
-                    </button>
-                    <button className="ghost" onClick={refreshAuth}>
-                      Refresh
-                    </button>
+              }
+            />
+            <Route
+              path="/auth"
+              element={
+                <div className="panel">
+                  <div className="panel-header">
+                    <h2>Auth</h2>
+                    <span className="badge neutral">{authProviders.length} providers</span>
                   </div>
-                </label>
-              </div>
-              <div className="status">
-                Login starts a local callback server on port 8085.
-              </div>
-              {authState.status !== 'idle' ? (
-                <div className={`status status-${authState.status}`}>{authState.message ?? authState.status}</div>
-              ) : null}
-              <div className="mcp-list">
-                {authProviders.length === 0 ? (
-                  <div className="empty">No providers configured.</div>
-                ) : (
-                  authProviders.map((provider) => (
-                    <div key={provider.provider} className="mcp-card">
-                      <div>
-                        <div className="mcp-title">{provider.provider}</div>
-                        <div className="mcp-meta">
-                          {provider.email ?? 'No email'}
-                          {provider.expiresAt ? ` · Expires ${new Date(provider.expiresAt).toLocaleString()}` : ''}
-                          {provider.expired ? ' · expired' : ''}
+                  <div className="panel-body">
+                    <div className="form-grid">
+                      <label className="field">
+                        <span>Provider</span>
+                        <select value={authProvider} onChange={(event) => setAuthProvider(event.target.value)}>
+                          <option value="google">google</option>
+                        </select>
+                      </label>
+                      <label className="field">
+                        <span>Actions</span>
+                        <div className="row-actions">
+                          <button className="primary" onClick={handleAuthLogin} disabled={authState.status === 'saving'}>
+                            {authState.status === 'saving' ? 'Logging in...' : 'Login'}
+                          </button>
+                          <button className="ghost" onClick={refreshAuth}>
+                            Refresh
+                          </button>
                         </div>
+                      </label>
+                    </div>
+                    <div className="status">Login starts a local callback server on port 8085.</div>
+                    {authState.status !== 'idle' ? (
+                      <div className={`status status-${authState.status}`}>{authState.message ?? authState.status}</div>
+                    ) : null}
+                    <div className="mcp-list">
+                      {authProviders.length === 0 ? (
+                        <div className="empty">No providers configured.</div>
+                      ) : (
+                        authProviders.map((provider) => (
+                          <div key={provider.provider} className="mcp-card">
+                            <div>
+                              <div className="mcp-title">{provider.provider}</div>
+                              <div className="mcp-meta">
+                                {provider.email ?? 'No email'}
+                                {provider.expiresAt ? ` · Expires ${new Date(provider.expiresAt).toLocaleString()}` : ''}
+                                {provider.expired ? ' · expired' : ''}
+                              </div>
+                            </div>
+                            <div className="row-actions">
+                              <button className="ghost" onClick={() => handleAuthRevoke(provider.provider)}>
+                                Revoke
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <div className="panel">
+                  <div className="panel-header">
+                    <h2>Configuration</h2>
+                    <span className="badge neutral">{mcpCount} MCP</span>
+                  </div>
+                  <div className="panel-body">
+                    <div className="form-grid">
+                      <label className="field">
+                        <span>Model</span>
+                        <input
+                          type="text"
+                          value={config?.model.name ?? ''}
+                          onChange={(event) => updateModel({ name: event.target.value })}
+                          disabled={!isReady}
+                        />
+                        {getError('model.name') ? <span className="error-text">{getError('model.name')}</span> : null}
+                      </label>
+                      <label className={`field ${getError('model.provider') ? 'has-error' : ''}`}>
+                        <span>Provider</span>
+                        <select
+                          value={config?.model.provider ?? 'openai'}
+                          onChange={(event) => updateModel({ provider: event.target.value })}
+                          disabled={!isReady}
+                        >
+                          {providerOptions.map((provider) => (
+                            <option key={provider} value={provider}>
+                              {formatProviderLabel(provider)}
+                            </option>
+                          ))}
+                        </select>
+                        {getError('model.provider') ? (
+                          <span className="error-text">{getError('model.provider')}</span>
+                        ) : null}
+                      </label>
+                      <label className={`field ${getError('model.apiKey') ? 'has-error' : ''}`}>
+                        <span>API Key</span>
+                        <input
+                          type="password"
+                          value={config?.model.apiKey ?? ''}
+                          onChange={(event) => updateModel({ apiKey: event.target.value || undefined })}
+                          placeholder="Stored securely"
+                          disabled={!isReady}
+                        />
+                        {getError('model.apiKey') ? <span className="error-text">{getError('model.apiKey')}</span> : null}
+                      </label>
+                      <label className={`field ${getError('model.baseUrl') ? 'has-error' : ''}`}>
+                        <span>Base URL</span>
+                        <input
+                          type="text"
+                          value={config?.model.baseUrl ?? ''}
+                          onChange={(event) => updateModel({ baseUrl: event.target.value || undefined })}
+                          placeholder="Optional"
+                          disabled={!isReady}
+                        />
+                        {getError('model.baseUrl') ? <span className="error-text">{getError('model.baseUrl')}</span> : null}
+                      </label>
+                      <label className={`field ${getError('model.reasoningEffort') ? 'has-error' : ''}`}>
+                        <span>Reasoning Effort</span>
+                        <select
+                          value={config?.model.reasoningEffort ?? ''}
+                          onChange={(event) =>
+                            updateModel({
+                              reasoningEffort: event.target.value
+                                ? (event.target.value as KigoConfig['model']['reasoningEffort'])
+                                : undefined
+                            })
+                          }
+                          disabled={!isReady}
+                        >
+                          <option value="">Default</option>
+                          <option value="none">None</option>
+                          <option value="minimal">Minimal</option>
+                          <option value="low">Low</option>
+                          <option value="medium">Medium</option>
+                          <option value="high">High</option>
+                        </select>
+                        {getError('model.reasoningEffort') ? (
+                          <span className="error-text">{getError('model.reasoningEffort')}</span>
+                        ) : null}
+                      </label>
+                      <label className={`field ${getError('cli.session') ? 'has-error' : ''}`}>
+                        <span>CLI Session</span>
+                        <input
+                          type="text"
+                          value={config?.cli.session ?? ''}
+                          onChange={(event) => updateCli({ session: event.target.value || undefined })}
+                          placeholder="Optional session name"
+                          disabled={!isReady}
+                        />
+                        {getError('cli.session') ? <span className="error-text">{getError('cli.session')}</span> : null}
+                      </label>
+                      <label className={`field ${getError('cli.stream') ? 'has-error' : ''}`}>
+                        <span>Stream Responses</span>
+                        <div className="toggle">
+                          <input
+                            type="checkbox"
+                            checked={config?.cli.stream ?? true}
+                            onChange={(event) => updateCli({ stream: event.target.checked })}
+                            disabled={!isReady}
+                          />
+                          <span>{config?.cli.stream ? 'Enabled' : 'Disabled'}</span>
+                        </div>
+                        {getError('cli.stream') ? <span className="error-text">{getError('cli.stream')}</span> : null}
+                      </label>
+                      <label className={`field ${getError('skills.enabled') ? 'has-error' : ''}`}>
+                        <span>Skills</span>
+                        <div className="toggle">
+                          <input
+                            type="checkbox"
+                            checked={config?.skills.enabled ?? true}
+                            onChange={(event) => updateSkills({ enabled: event.target.checked })}
+                            disabled={!isReady}
+                          />
+                          <span>{config?.skills.enabled ? 'Enabled' : 'Disabled'}</span>
+                        </div>
+                        {getError('skills.enabled') ? <span className="error-text">{getError('skills.enabled')}</span> : null}
+                      </label>
+                      <label className={`field ${getError('skills.projectSkillsDir') ? 'has-error' : ''}`}>
+                        <span>Project Skills Dir</span>
+                        <input
+                          type="text"
+                          value={config?.skills.projectSkillsDir ?? ''}
+                          onChange={(event) => updateSkills({ projectSkillsDir: event.target.value })}
+                          disabled={!isReady}
+                        />
+                        {getError('skills.projectSkillsDir') ? (
+                          <span className="error-text">{getError('skills.projectSkillsDir')}</span>
+                        ) : null}
+                      </label>
+                      <label className={`field ${getError('skills.userSkillsDir') ? 'has-error' : ''}`}>
+                        <span>User Skills Dir</span>
+                        <input
+                          type="text"
+                          value={config?.skills.userSkillsDir ?? ''}
+                          onChange={(event) => updateSkills({ userSkillsDir: event.target.value })}
+                          disabled={!isReady}
+                        />
+                        {getError('skills.userSkillsDir') ? (
+                          <span className="error-text">{getError('skills.userSkillsDir')}</span>
+                        ) : null}
+                      </label>
+                    </div>
+
+                    <div className="divider" />
+                    <div className="row-actions">
+                      <button className="ghost small" onClick={() => setShowAdvancedConfig((prev) => !prev)}>
+                        {showAdvancedConfig ? 'Hide Advanced' : 'Show Advanced'}
+                      </button>
+                      <button className="ghost small" onClick={() => setShowRawConfig((prev) => !prev)}>
+                        {showRawConfig ? 'Hide YAML' : 'View YAML'}
+                      </button>
+                    </div>
+
+                    {showAdvancedConfig ? (
+                      <div className="form-grid">
+                        <label className={`field ${getError('model.azureApiVersion') ? 'has-error' : ''}`}>
+                          <span>Azure API Version</span>
+                          <input
+                            type="text"
+                            value={config?.model.azureApiVersion ?? ''}
+                            onChange={(event) => updateModel({ azureApiVersion: event.target.value || undefined })}
+                            placeholder="2024-06-01"
+                            disabled={!isReady}
+                          />
+                          {getError('model.azureApiVersion') ? (
+                            <span className="error-text">{getError('model.azureApiVersion')}</span>
+                          ) : null}
+                        </label>
+                        <label className={`field ${getError('model.vertexAiLocation') ? 'has-error' : ''}`}>
+                          <span>Vertex Location</span>
+                          <input
+                            type="text"
+                            value={config?.model.vertexAiLocation ?? ''}
+                            onChange={(event) => updateModel({ vertexAiLocation: event.target.value || undefined })}
+                            placeholder="us-central1"
+                            disabled={!isReady}
+                          />
+                          {getError('model.vertexAiLocation') ? (
+                            <span className="error-text">{getError('model.vertexAiLocation')}</span>
+                          ) : null}
+                        </label>
+                        <label className={`field ${getError('model.vertexAiCredentialsPath') ? 'has-error' : ''}`}>
+                          <span>Vertex Credentials Path</span>
+                          <input
+                            type="text"
+                            value={config?.model.vertexAiCredentialsPath ?? ''}
+                            onChange={(event) =>
+                              updateModel({ vertexAiCredentialsPath: event.target.value || undefined })
+                            }
+                            placeholder="~/.config/gcloud/application_default_credentials.json"
+                            disabled={!isReady}
+                          />
+                          {getError('model.vertexAiCredentialsPath') ? (
+                            <span className="error-text">{getError('model.vertexAiCredentialsPath')}</span>
+                          ) : null}
+                        </label>
+                      </div>
+                    ) : null}
+
+                    {showRawConfig ? (
+                      <div className="raw-config">
+                        <pre>{rawConfig}</pre>
+                      </div>
+                    ) : null}
+
+                    <div className="status">LSP is CLI-only. Run `kigo lsp` in a terminal.</div>
+
+                    <div className="divider" />
+                    <div className="form-grid">
+                      <label className="field">
+                        <span>Quick Set Key</span>
+                        <input
+                          type="text"
+                          value={quickKey}
+                          onChange={(event) => setQuickKey(event.target.value)}
+                          placeholder="model.name"
+                          disabled={!isReady}
+                        />
+                      </label>
+                      <label className="field">
+                        <span>Quick Set Value</span>
+                        <input
+                          type="text"
+                          value={quickValue}
+                          onChange={(event) => setQuickValue(event.target.value)}
+                          placeholder="gpt-4o"
+                          disabled={!isReady}
+                        />
+                      </label>
+                    </div>
+                    {quickSetState.status !== 'idle' ? (
+                      <div className={`status status-${quickSetState.status}`}>
+                        {quickSetState.message ?? quickSetState.status}
+                      </div>
+                    ) : null}
+
+                    <div className="save-row">
+                      <div className="save-meta">
+                        <div className="path">Path: {configPath || 'Loading...'}</div>
+                        {saveState.status !== 'idle' ? (
+                          <div className={`status status-${saveState.status}`}>
+                            {saveState.message ?? saveState.status}
+                          </div>
+                        ) : null}
                       </div>
                       <div className="row-actions">
-                        <button className="ghost" onClick={() => handleAuthRevoke(provider.provider)}>
-                          Revoke
+                        <button
+                          className="ghost"
+                          onClick={applyQuickSet}
+                          disabled={!isReady || quickSetState.status === 'saving'}
+                        >
+                          Apply Quick Set
+                        </button>
+                        <button className="ghost" onClick={resetConfig} disabled={!isReady || saveState.status === 'saving'}>
+                          Reset Defaults
+                        </button>
+                        <button className="primary" onClick={saveConfig} disabled={!isReady || saveState.status === 'saving'}>
+                          {saveState.status === 'saving' ? 'Saving...' : 'Save Config'}
                         </button>
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="panel" ref={settingsRef}>
-            <div className="panel-header">
-              <h2>Configuration</h2>
-              <span className="badge neutral">{mcpCount} MCP</span>
-            </div>
-            <div className="panel-body">
-              <div className="form-grid">
-                <label className="field">
-                  <span>Model</span>
-                  <input
-                    type="text"
-                    value={config?.model.name ?? ''}
-                    onChange={(event) => updateModel({ name: event.target.value })}
-                    disabled={!isReady}
-                  />
-                  {getError('model.name') ? <span className="error-text">{getError('model.name')}</span> : null}
-                </label>
-                <label className={`field ${getError('model.provider') ? 'has-error' : ''}`}>
-                  <span>Provider</span>
-                  <select
-                    value={config?.model.provider ?? 'openai'}
-                    onChange={(event) => updateModel({ provider: event.target.value })}
-                    disabled={!isReady}
-                  >
-                    {providerOptions.map((provider) => (
-                      <option key={provider} value={provider}>
-                        {formatProviderLabel(provider)}
-                      </option>
-                    ))}
-                  </select>
-                  {getError('model.provider') ? (
-                    <span className="error-text">{getError('model.provider')}</span>
-                  ) : null}
-                </label>
-                <label className={`field ${getError('model.apiKey') ? 'has-error' : ''}`}>
-                  <span>API Key</span>
-                  <input
-                    type="password"
-                    value={config?.model.apiKey ?? ''}
-                    onChange={(event) => updateModel({ apiKey: event.target.value || undefined })}
-                    placeholder="Stored securely"
-                    disabled={!isReady}
-                  />
-                  {getError('model.apiKey') ? <span className="error-text">{getError('model.apiKey')}</span> : null}
-                </label>
-                <label className={`field ${getError('model.baseUrl') ? 'has-error' : ''}`}>
-                  <span>Base URL</span>
-                  <input
-                    type="text"
-                    value={config?.model.baseUrl ?? ''}
-                    onChange={(event) => updateModel({ baseUrl: event.target.value || undefined })}
-                    placeholder="Optional"
-                    disabled={!isReady}
-                  />
-                  {getError('model.baseUrl') ? <span className="error-text">{getError('model.baseUrl')}</span> : null}
-                </label>
-                <label className={`field ${getError('model.reasoningEffort') ? 'has-error' : ''}`}>
-                  <span>Reasoning Effort</span>
-                  <select
-                    value={config?.model.reasoningEffort ?? ''}
-                    onChange={(event) =>
-                      updateModel({
-                        reasoningEffort: event.target.value
-                          ? (event.target.value as KigoConfig['model']['reasoningEffort'])
-                          : undefined
-                      })
-                    }
-                    disabled={!isReady}
-                  >
-                    <option value="">Default</option>
-                    <option value="none">None</option>
-                    <option value="minimal">Minimal</option>
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
-                  {getError('model.reasoningEffort') ? (
-                    <span className="error-text">{getError('model.reasoningEffort')}</span>
-                  ) : null}
-                </label>
-                <label className={`field ${getError('cli.session') ? 'has-error' : ''}`}>
-                  <span>CLI Session</span>
-                  <input
-                    type="text"
-                    value={config?.cli.session ?? ''}
-                    onChange={(event) => updateCli({ session: event.target.value || undefined })}
-                    placeholder="Optional session name"
-                    disabled={!isReady}
-                  />
-                  {getError('cli.session') ? <span className="error-text">{getError('cli.session')}</span> : null}
-                </label>
-                <label className={`field ${getError('cli.stream') ? 'has-error' : ''}`}>
-                  <span>Stream Responses</span>
-                  <div className="toggle">
-                    <input
-                      type="checkbox"
-                      checked={config?.cli.stream ?? true}
-                      onChange={(event) => updateCli({ stream: event.target.checked })}
-                      disabled={!isReady}
-                    />
-                    <span>{config?.cli.stream ? 'Enabled' : 'Disabled'}</span>
                   </div>
-                  {getError('cli.stream') ? <span className="error-text">{getError('cli.stream')}</span> : null}
-                </label>
-                <label className={`field ${getError('skills.enabled') ? 'has-error' : ''}`}>
-                  <span>Skills</span>
-                  <div className="toggle">
-                    <input
-                      type="checkbox"
-                      checked={config?.skills.enabled ?? true}
-                      onChange={(event) => updateSkills({ enabled: event.target.checked })}
-                      disabled={!isReady}
-                    />
-                    <span>{config?.skills.enabled ? 'Enabled' : 'Disabled'}</span>
+                </div>
+              }
+            />
+            <Route
+              path="/mcp"
+              element={
+                <div className="panel">
+                  <div className="panel-header">
+                    <h2>MCP Servers</h2>
+                    <span className="badge neutral">{mcpServers.length} active</span>
                   </div>
-                  {getError('skills.enabled') ? <span className="error-text">{getError('skills.enabled')}</span> : null}
-                </label>
-                <label className={`field ${getError('skills.projectSkillsDir') ? 'has-error' : ''}`}>
-                  <span>Project Skills Dir</span>
-                  <input
-                    type="text"
-                    value={config?.skills.projectSkillsDir ?? ''}
-                    onChange={(event) => updateSkills({ projectSkillsDir: event.target.value })}
-                    disabled={!isReady}
-                  />
-                  {getError('skills.projectSkillsDir') ? (
-                    <span className="error-text">{getError('skills.projectSkillsDir')}</span>
-                  ) : null}
-                </label>
-                <label className={`field ${getError('skills.userSkillsDir') ? 'has-error' : ''}`}>
-                  <span>User Skills Dir</span>
-                  <input
-                    type="text"
-                    value={config?.skills.userSkillsDir ?? ''}
-                    onChange={(event) => updateSkills({ userSkillsDir: event.target.value })}
-                    disabled={!isReady}
-                  />
-                  {getError('skills.userSkillsDir') ? (
-                    <span className="error-text">{getError('skills.userSkillsDir')}</span>
-                  ) : null}
-                </label>
-              </div>
-
-              <div className="divider" />
-              <div className="row-actions">
-                <button className="ghost small" onClick={() => setShowAdvancedConfig((prev) => !prev)}>
-                  {showAdvancedConfig ? 'Hide Advanced' : 'Show Advanced'}
-                </button>
-                <button className="ghost small" onClick={() => setShowRawConfig((prev) => !prev)}>
-                  {showRawConfig ? 'Hide YAML' : 'View YAML'}
-                </button>
-              </div>
-
-              {showAdvancedConfig ? (
-                <div className="form-grid">
-                  <label className={`field ${getError('model.azureApiVersion') ? 'has-error' : ''}`}>
-                    <span>Azure API Version</span>
-                    <input
-                      type="text"
-                      value={config?.model.azureApiVersion ?? ''}
-                      onChange={(event) => updateModel({ azureApiVersion: event.target.value || undefined })}
-                      placeholder="2024-06-01"
-                      disabled={!isReady}
-                    />
-                    {getError('model.azureApiVersion') ? (
-                      <span className="error-text">{getError('model.azureApiVersion')}</span>
-                    ) : null}
-                  </label>
-                  <label className={`field ${getError('model.vertexAiLocation') ? 'has-error' : ''}`}>
-                    <span>Vertex Location</span>
-                    <input
-                      type="text"
-                      value={config?.model.vertexAiLocation ?? ''}
-                      onChange={(event) => updateModel({ vertexAiLocation: event.target.value || undefined })}
-                      placeholder="us-central1"
-                      disabled={!isReady}
-                    />
-                    {getError('model.vertexAiLocation') ? (
-                      <span className="error-text">{getError('model.vertexAiLocation')}</span>
-                    ) : null}
-                  </label>
-                  <label className={`field ${getError('model.vertexAiCredentialsPath') ? 'has-error' : ''}`}>
-                    <span>Vertex Credentials Path</span>
-                    <input
-                      type="text"
-                      value={config?.model.vertexAiCredentialsPath ?? ''}
-                      onChange={(event) => updateModel({ vertexAiCredentialsPath: event.target.value || undefined })}
-                      placeholder="~/.config/gcloud/application_default_credentials.json"
-                      disabled={!isReady}
-                    />
-                    {getError('model.vertexAiCredentialsPath') ? (
-                      <span className="error-text">{getError('model.vertexAiCredentialsPath')}</span>
-                    ) : null}
-                  </label>
-                </div>
-              ) : null}
-
-              {showRawConfig ? (
-                <div className="raw-config">
-                  <pre>{rawConfig}</pre>
-                </div>
-              ) : null}
-
-              <div className="status">LSP is CLI-only. Run `kigo lsp` in a terminal.</div>
-
-              <div className="divider" />
-              <div className="form-grid">
-                <label className="field">
-                  <span>Quick Set Key</span>
-                  <input
-                    type="text"
-                    value={quickKey}
-                    onChange={(event) => setQuickKey(event.target.value)}
-                    placeholder="model.name"
-                    disabled={!isReady}
-                  />
-                </label>
-                <label className="field">
-                  <span>Quick Set Value</span>
-                  <input
-                    type="text"
-                    value={quickValue}
-                    onChange={(event) => setQuickValue(event.target.value)}
-                    placeholder="gpt-4o"
-                    disabled={!isReady}
-                  />
-                </label>
-              </div>
-              {quickSetState.status !== 'idle' ? (
-                <div className={`status status-${quickSetState.status}`}>{quickSetState.message ?? quickSetState.status}</div>
-              ) : null}
-
-              <div className="save-row">
-                <div className="save-meta">
-                  <div className="path">Path: {configPath || 'Loading...'}</div>
-                  {saveState.status !== 'idle' ? (
-                    <div className={`status status-${saveState.status}`}>
-                      {saveState.message ?? saveState.status}
+                  <div className="panel-body">
+                    <div className="mcp-list">
+                      {mcpServers.length === 0 ? (
+                        <div className="empty">No MCP servers configured.</div>
+                      ) : (
+                        mcpServers.map((server) => (
+                          <div key={server.name} className="mcp-card">
+                            <div>
+                              <div className="mcp-title">{server.name}</div>
+                              <div className="mcp-meta">
+                                {server.transportType}
+                                {server.command ? ` · ${server.command}` : ''}
+                                {server.url ? ` · ${server.url}` : ''}
+                              </div>
+                            </div>
+                            <div className="row-actions">
+                              <button className="ghost" onClick={() => loadServerIntoForm(server)}>
+                                Edit
+                              </button>
+                              <button className="ghost" onClick={() => removeMcpServer(server.name)}>
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
                     </div>
-                  ) : null}
-                </div>
-                <div className="row-actions">
-                  <button className="ghost" onClick={applyQuickSet} disabled={!isReady || quickSetState.status === 'saving'}>
-                    Apply Quick Set
-                  </button>
-                  <button className="ghost" onClick={resetConfig} disabled={!isReady || saveState.status === 'saving'}>
-                    Reset Defaults
-                  </button>
-                  <button className="primary" onClick={saveConfig} disabled={!isReady || saveState.status === 'saving'}>
-                    {saveState.status === 'saving' ? 'Saving...' : 'Save Config'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
 
-          <div className="panel" ref={mcpRef}>
-            <div className="panel-header">
-              <h2>MCP Servers</h2>
-              <span className="badge neutral">{mcpServers.length} active</span>
-            </div>
-            <div className="panel-body">
-              <div className="mcp-list">
-                {mcpServers.length === 0 ? (
-                  <div className="empty">No MCP servers configured.</div>
-                ) : (
-                  mcpServers.map((server) => (
-                    <div key={server.name} className="mcp-card">
-                      <div>
-                        <div className="mcp-title">{server.name}</div>
-                        <div className="mcp-meta">
-                          {server.transportType}
-                          {server.command ? ` · ${server.command}` : ''}
-                          {server.url ? ` · ${server.url}` : ''}
+                    <div className="divider" />
+
+                    <div className="form-grid">
+                      <label className="field">
+                        <span>Name</span>
+                        <input
+                          type="text"
+                          value={mcpForm.name}
+                          onChange={(event) => setMcpForm({ ...mcpForm, name: event.target.value })}
+                        />
+                      </label>
+                      <label className="field">
+                        <span>Transport</span>
+                        <select
+                          value={mcpForm.transportType}
+                          onChange={(event) =>
+                            setMcpForm({
+                              ...mcpForm,
+                              transportType: event.target.value as MCPFormState['transportType']
+                            })
+                          }
+                        >
+                          <option value="stdio">stdio</option>
+                          <option value="http">http</option>
+                          <option value="sse">sse</option>
+                        </select>
+                      </label>
+                      <label className="field">
+                        <span>Command</span>
+                        <input
+                          type="text"
+                          value={mcpForm.command}
+                          onChange={(event) => setMcpForm({ ...mcpForm, command: event.target.value })}
+                          disabled={mcpForm.transportType !== 'stdio'}
+                          placeholder="python -m server"
+                        />
+                      </label>
+                      <label className="field">
+                        <span>Args (comma separated)</span>
+                        <input
+                          type="text"
+                          value={mcpForm.args}
+                          onChange={(event) => setMcpForm({ ...mcpForm, args: event.target.value })}
+                          disabled={mcpForm.transportType !== 'stdio'}
+                          placeholder="--flag, value"
+                        />
+                      </label>
+                      <label className="field">
+                        <span>URL</span>
+                        <input
+                          type="text"
+                          value={mcpForm.url}
+                          onChange={(event) => setMcpForm({ ...mcpForm, url: event.target.value })}
+                          disabled={mcpForm.transportType === 'stdio'}
+                          placeholder="http://localhost:8000"
+                        />
+                      </label>
+                      <label className="field">
+                        <span>Headers (key=value, comma separated)</span>
+                        <input
+                          type="text"
+                          value={mcpForm.headers}
+                          onChange={(event) => setMcpForm({ ...mcpForm, headers: event.target.value })}
+                          disabled={mcpForm.transportType === 'stdio'}
+                          placeholder="Authorization=Bearer x, X-Client=Kigo"
+                        />
+                      </label>
+                      <label className="field">
+                        <span>Env Vars (key=value, comma separated)</span>
+                        <input
+                          type="text"
+                          value={mcpForm.envVars}
+                          onChange={(event) => setMcpForm({ ...mcpForm, envVars: event.target.value })}
+                          disabled={mcpForm.transportType !== 'stdio'}
+                          placeholder="API_KEY=xxx, MODE=dev"
+                        />
+                      </label>
+                      <label className="field">
+                        <span>Allowed Tools (comma separated)</span>
+                        <input
+                          type="text"
+                          value={mcpForm.allowedTools}
+                          onChange={(event) => setMcpForm({ ...mcpForm, allowedTools: event.target.value })}
+                          placeholder="read_file, write_file"
+                        />
+                      </label>
+                      <label className="field">
+                        <span>Blocked Tools (comma separated)</span>
+                        <input
+                          type="text"
+                          value={mcpForm.blockedTools}
+                          onChange={(event) => setMcpForm({ ...mcpForm, blockedTools: event.target.value })}
+                          placeholder="run_shell"
+                        />
+                      </label>
+                      <label className="field">
+                        <span>Cache Tools List</span>
+                        <div className="toggle">
+                          <input
+                            type="checkbox"
+                            checked={mcpForm.cacheToolsList}
+                            onChange={(event) => setMcpForm({ ...mcpForm, cacheToolsList: event.target.checked })}
+                          />
+                          <span>{mcpForm.cacheToolsList ? 'Enabled' : 'Disabled'}</span>
                         </div>
+                      </label>
+                    </div>
+
+                    <div className="save-row">
+                      <div className="save-meta">
+                        {mcpState.status !== 'idle' ? (
+                          <div className={`status status-${mcpState.status}`}>{mcpState.message ?? mcpState.status}</div>
+                        ) : (
+                          <div className="status">Manage MCP servers for this workspace.</div>
+                        )}
                       </div>
                       <div className="row-actions">
-                        <button className="ghost" onClick={() => loadServerIntoForm(server)}>
-                          Edit
+                        <button className="ghost" onClick={testMcpServer} disabled={mcpState.status === 'saving'}>
+                          Test
                         </button>
-                        <button className="ghost" onClick={() => removeMcpServer(server.name)}>
-                          Remove
+                        <button className="primary" onClick={addMcpServer} disabled={mcpState.status === 'saving'}>
+                          {mcpState.status === 'saving' ? 'Saving...' : 'Save Server'}
                         </button>
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
-
-              <div className="divider" />
-
-              <div className="form-grid">
-                <label className="field">
-                  <span>Name</span>
-                  <input
-                    type="text"
-                    value={mcpForm.name}
-                    onChange={(event) => setMcpForm({ ...mcpForm, name: event.target.value })}
-                  />
-                </label>
-                <label className="field">
-                  <span>Transport</span>
-                  <select
-                    value={mcpForm.transportType}
-                    onChange={(event) =>
-                      setMcpForm({
-                        ...mcpForm,
-                        transportType: event.target.value as MCPFormState['transportType']
-                      })
-                    }
-                  >
-                    <option value="stdio">stdio</option>
-                    <option value="http">http</option>
-                    <option value="sse">sse</option>
-                  </select>
-                </label>
-                <label className="field">
-                  <span>Command</span>
-                  <input
-                    type="text"
-                    value={mcpForm.command}
-                    onChange={(event) => setMcpForm({ ...mcpForm, command: event.target.value })}
-                    disabled={mcpForm.transportType !== 'stdio'}
-                    placeholder="python -m server"
-                  />
-                </label>
-                <label className="field">
-                  <span>Args (comma separated)</span>
-                  <input
-                    type="text"
-                    value={mcpForm.args}
-                    onChange={(event) => setMcpForm({ ...mcpForm, args: event.target.value })}
-                    disabled={mcpForm.transportType !== 'stdio'}
-                    placeholder="--flag, value"
-                  />
-                </label>
-                <label className="field">
-                  <span>URL</span>
-                  <input
-                    type="text"
-                    value={mcpForm.url}
-                    onChange={(event) => setMcpForm({ ...mcpForm, url: event.target.value })}
-                    disabled={mcpForm.transportType === 'stdio'}
-                    placeholder="http://localhost:8000"
-                  />
-                </label>
-                <label className="field">
-                  <span>Headers (key=value, comma separated)</span>
-                  <input
-                    type="text"
-                    value={mcpForm.headers}
-                    onChange={(event) => setMcpForm({ ...mcpForm, headers: event.target.value })}
-                    disabled={mcpForm.transportType === 'stdio'}
-                    placeholder="Authorization=Bearer x, X-Client=Kigo"
-                  />
-                </label>
-                <label className="field">
-                  <span>Env Vars (key=value, comma separated)</span>
-                  <input
-                    type="text"
-                    value={mcpForm.envVars}
-                    onChange={(event) => setMcpForm({ ...mcpForm, envVars: event.target.value })}
-                    disabled={mcpForm.transportType !== 'stdio'}
-                    placeholder="API_KEY=xxx, MODE=dev"
-                  />
-                </label>
-                <label className="field">
-                  <span>Allowed Tools (comma separated)</span>
-                  <input
-                    type="text"
-                    value={mcpForm.allowedTools}
-                    onChange={(event) => setMcpForm({ ...mcpForm, allowedTools: event.target.value })}
-                    placeholder="read_file, write_file"
-                  />
-                </label>
-                <label className="field">
-                  <span>Blocked Tools (comma separated)</span>
-                  <input
-                    type="text"
-                    value={mcpForm.blockedTools}
-                    onChange={(event) => setMcpForm({ ...mcpForm, blockedTools: event.target.value })}
-                    placeholder="run_shell"
-                  />
-                </label>
-                <label className="field">
-                  <span>Cache Tools List</span>
-                  <div className="toggle">
-                    <input
-                      type="checkbox"
-                      checked={mcpForm.cacheToolsList}
-                      onChange={(event) => setMcpForm({ ...mcpForm, cacheToolsList: event.target.checked })}
-                    />
-                    <span>{mcpForm.cacheToolsList ? 'Enabled' : 'Disabled'}</span>
                   </div>
-                </label>
-              </div>
-
-              <div className="save-row">
-                <div className="save-meta">
-                  {mcpState.status !== 'idle' ? (
-                    <div className={`status status-${mcpState.status}`}>{mcpState.message ?? mcpState.status}</div>
-                  ) : (
-                    <div className="status">Manage MCP servers for this workspace.</div>
-                  )}
                 </div>
-                <div className="row-actions">
-                  <button className="ghost" onClick={testMcpServer} disabled={mcpState.status === 'saving'}>
-                    Test
-                  </button>
-                  <button className="primary" onClick={addMcpServer} disabled={mcpState.status === 'saving'}>
-                    {mcpState.status === 'saving' ? 'Saving...' : 'Save Server'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+              }
+            />
+            <Route path="*" element={<Navigate to="/sessions" replace />} />
+          </Routes>
         </section>
         {toast ? (
           <div className={`toast ${toast.tone}`}>
