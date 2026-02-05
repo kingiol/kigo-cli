@@ -5,7 +5,7 @@
 
 import { Command } from 'commander';
 import { getConfigManager } from './config/ConfigManager.js';
-import { runInteractive } from './interactive.js';
+import { runInteractiveWithUI } from './ui/index.js';
 import { configCommands } from './commands/config.js';
 import { authCommands } from './commands/auth.js';
 import { mcpCommands } from './commands/mcp.js';
@@ -43,7 +43,7 @@ program
       // TODO: Implement single prompt execution
     } else {
       // Interactive mode
-      await runInteractive(configManager, {
+      await runInteractiveWithUI(configManager, {
         ...options,
         version: pkg.version
       });

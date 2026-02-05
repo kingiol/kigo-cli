@@ -5,6 +5,7 @@
     "rootDir": "./src",
     "composite": true,
     "preserveSymlinks": true,
+    "jsx": "react-jsx",
     "paths": {
       "@kigo/tools": ["../../packages/tools/src/index.ts"],
       "@kigo/tools/*": ["../../packages/tools/src/*"],
