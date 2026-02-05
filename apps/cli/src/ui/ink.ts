@@ -15,6 +15,12 @@ type OutputSection = {
   content: string;
 };
 
+type ToolOutputState = {
+  sectionId: number;
+  lines: string[];
+  offset: number;
+};
+
 type QuestionnaireState = {
   questionnaireId: string;
   questions: Array<{
@@ -63,6 +69,8 @@ function buildQuestionnaireState(payload: AnswerQuestionsPayload): Questionnaire
   };
 }
 
+const MAX_TOOL_OUTPUT_LINES = 10;
+
 type InteractiveInkAppProps = {
   configManager: Awaited<ReturnType<typeof getConfigManager>>;
   options: InteractiveOptions;
@@ -94,6 +102,11 @@ function InteractiveInkApp({
   const [questionnaireState, setQuestionnaireState] = useState<QuestionnaireState | null>(null);
   const [questionnaireIntro, setQuestionnaireIntro] =
     useState<{ title?: string; instructions?: string } | null>(null);
+  const [toolOutputs, setToolOutputs] = useState<ToolOutputState[]>([]);
+  const [activeToolOutputId, setActiveToolOutputId] = useState<number | null>(null);
+  const [menuActive, setMenuActive] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [belowSections, setBelowSections] = useState<OutputSection[]>([]);
 
   const slashRegistry = runtimeRef.current?.getSlashRegistry();
 
@@ -107,8 +120,36 @@ function InteractiveInkApp({
       .map((c) => ({ name: c.name, description: c.description }));
   }, [inputValue, slashRegistry]);
 
+  useEffect(() => {
+    if (suggestions.length === 0) {
+      setMenuActive(false);
+      setSelectedIndex(0);
+      return;
+    }
+    setMenuActive(true);
+    if (selectedIndex >= suggestions.length) {
+      setSelectedIndex(0);
+    }
+  }, [suggestions, selectedIndex]);
+
   const appendSection = useCallback((type: OutputSection["type"], content: string) => {
-    setSections((prev) => [
+    setSections((prev) => {
+      const nextId = prev.length + 1;
+      const next = [...prev, { id: nextId, type, content }];
+      if (type === "tool_output") {
+        const lines = content.split("\n");
+        setToolOutputs((outputs) => [
+          ...outputs,
+          { sectionId: nextId, lines, offset: 0 },
+        ]);
+        setActiveToolOutputId(nextId);
+      }
+      return next;
+    });
+  }, []);
+
+  const appendBelowSection = useCallback((type: OutputSection["type"], content: string) => {
+    setBelowSections((prev) => [
       ...prev,
       { id: prev.length + 1, type, content },
     ]);
@@ -161,10 +202,10 @@ function InteractiveInkApp({
         } else if (event.data.error) {
           appendSection("tool_output", `Error: ${event.data.error}`);
         } else {
-          appendSection(
-            "tool_output",
-            renderToolOutputPlain(event.toolName || "tool", event.data.result)
-          );
+        appendSection(
+          "tool_output",
+          renderToolOutputPlain(event.toolName || "tool", event.data.result)
+        );
         }
         setSpinnerText("Thinking...");
         return;
@@ -338,37 +379,119 @@ function InteractiveInkApp({
     [appendSection, questionnaireState, submitQuestionnaireAnswers]
   );
 
+  const adjustActiveToolOutput = useCallback(
+    (delta: number) => {
+      setToolOutputs((outputs) => {
+        if (!activeToolOutputId) {
+          return outputs;
+        }
+        const next = outputs.map((output) => {
+          if (output.sectionId !== activeToolOutputId) {
+            return output;
+          }
+          const maxOffset = Math.max(0, output.lines.length - MAX_TOOL_OUTPUT_LINES);
+          const nextOffset = Math.min(
+            maxOffset,
+            Math.max(0, output.offset + delta)
+          );
+          return { ...output, offset: nextOffset };
+        });
+        return next;
+      });
+    },
+    [activeToolOutputId]
+  );
+
+  const cycleToolOutput = useCallback(
+    (direction: 1 | -1) => {
+      setToolOutputs((outputs) => {
+        if (outputs.length === 0) {
+          return outputs;
+        }
+        const ids = outputs.map((o) => o.sectionId);
+        const currentIndex = activeToolOutputId
+          ? ids.indexOf(activeToolOutputId)
+          : -1;
+        const nextIndex =
+          currentIndex === -1
+            ? ids.length - 1
+            : (currentIndex + direction + ids.length) % ids.length;
+        setActiveToolOutputId(ids[nextIndex]);
+        return outputs;
+      });
+    },
+    [activeToolOutputId]
+  );
+
   const handleSubmit = useCallback(
     async (value: string) => {
       if (!ready || busy) {
         return;
       }
       const trimmed = value.trim();
+      const runtime = runtimeRef.current;
+
+      if (value.startsWith("/") && slashRegistry) {
+        const matches = slashRegistry
+          .getAll()
+          .filter((c) => ("/" + c.name).startsWith(value));
+        if (matches.length > 0) {
+          const selected = matches[selectedIndex] || matches[0];
+          setInputValue(`/${selected.name} `);
+          return;
+        }
+      }
+
       setInputValue("");
 
       if (!trimmed) {
         return;
       }
 
-      flushCurrentText();
-      appendSection("text", `> ${trimmed}`);
-
       if (questionnaireState) {
+        flushCurrentText();
+        appendSection("text", `> ${trimmed}`);
         await handleQuestionnaireInput(trimmed);
         return;
       }
-
-      const runtime = runtimeRef.current;
       if (!runtime) {
         return;
       }
 
       if (trimmed.startsWith("/")) {
-        await runtime.handleSlashCommand(trimmed, async () => {
-          exit();
-        });
+        const logs: string[] = [];
+        const original = {
+          log: console.log,
+          info: console.info,
+          warn: console.warn,
+          error: console.error,
+        };
+        const capture = (...args: any[]) => {
+          logs.push(args.map((arg) => String(arg)).join(" "));
+        };
+        console.log = capture;
+        console.info = capture;
+        console.warn = capture;
+        console.error = capture;
+        try {
+          await runtime.handleSlashCommand(trimmed, async () => {
+            exit();
+          });
+        } finally {
+          console.log = original.log;
+          console.info = original.info;
+          console.warn = original.warn;
+          console.error = original.error;
+        }
+        appendBelowSection("text", `> ${trimmed}`);
+        if (logs.length > 0) {
+          appendBelowSection("text", logs.join("\n"));
+        }
         return;
       }
+
+      flushCurrentText();
+      appendSection("text", `> ${trimmed}`);
 
       setBusy(true);
       setSpinnerText("Thinking...");
@@ -390,6 +513,50 @@ function InteractiveInkApp({
   useInput((_input, key) => {
     if (key.escape && questionnaireState) {
       setQuestionnaireState(null);
+      return;
+    }
+    if (menuActive && suggestions.length > 0) {
+      if (key.upArrow) {
+        setSelectedIndex((prev) =>
+          (prev - 1 + suggestions.length) % suggestions.length
+        );
+        return;
+      }
+      if (key.downArrow) {
+        setSelectedIndex((prev) => (prev + 1) % suggestions.length);
+        return;
+      }
+      if (key.tab) {
+        const selected = suggestions[selectedIndex];
+        if (selected) {
+          setInputValue(`/${selected.name} `);
+        }
+        return;
+      }
+    }
+    if (key.ctrl && key.upArrow) {
+      cycleToolOutput(-1);
+      return;
+    }
+    if (key.ctrl && key.downArrow) {
+      cycleToolOutput(1);
+      return;
+    }
+    if (key.pageUp) {
+      adjustActiveToolOutput(-MAX_TOOL_OUTPUT_LINES);
+      return;
+    }
+    if (key.pageDown) {
+      adjustActiveToolOutput(MAX_TOOL_OUTPUT_LINES);
+      return;
+    }
+    if (key.upArrow) {
+      adjustActiveToolOutput(-1);
+      return;
+    }
+    if (key.downArrow) {
+      adjustActiveToolOutput(1);
+      return;
     }
   });
 
@@ -414,6 +581,18 @@ function InteractiveInkApp({
     ? questionnaireState.questions[questionnaireState.currentIndex]
     : null;
 
+  const toolOutputMap = useMemo(() => {
+    const map = new Map<number, ToolOutputState>();
+    for (const output of toolOutputs) {
+      map.set(output.sectionId, output);
+    }
+    return map;
+  }, [toolOutputs]);
+
+  const activeToolOutput = activeToolOutputId
+    ? toolOutputMap.get(activeToolOutputId) || null
+    : null;
+
   return h(
     Box,
     { flexDirection: "column", padding: 1 },
@@ -428,7 +607,36 @@ function InteractiveInkApp({
     h(
       Box,
       { flexDirection: "column" },
-      ...sections.map((section) => h(Text, { key: section.id }, section.content)),
+      ...sections.map((section) => {
+        if (section.type !== "tool_output") {
+          return h(Text, { key: section.id }, section.content);
+        }
+        const toolState = toolOutputMap.get(section.id);
+        if (!toolState) {
+          return h(Text, { key: section.id }, section.content);
+        }
+        const start = toolState.offset;
+        const end = start + MAX_TOOL_OUTPUT_LINES;
+        const visibleLines = toolState.lines.slice(start, end);
+        const remaining = toolState.lines.length - end;
+        const header =
+          section.id === activeToolOutputId
+            ? "─ tool output (active)"
+            : "─ tool output";
+        const footer =
+          toolState.lines.length > MAX_TOOL_OUTPUT_LINES
+            ? `… ${Math.max(0, remaining)} more lines (↑↓ PgUp/PgDn, Ctrl+↑/↓ to switch)`
+            : null;
+        return h(
+          Box,
+          { key: section.id, flexDirection: "column" },
+          h(Text, { dimColor: true }, header),
+          ...visibleLines.map((line, index) =>
+            h(Text, { key: `${section.id}-${index}` }, line)
+          ),
+          footer ? h(Text, { dimColor: true }, footer) : null
+        );
+      }),
       currentText ? h(Text, {}, currentText) : null
     ),
     questionnaireIntro
@@ -466,19 +674,6 @@ function InteractiveInkApp({
             : null
         )
       : null,
-    suggestions.length > 0
-      ? h(
-          Box,
-          { flexDirection: "column", marginTop: 1 },
-          ...suggestions.map((item) =>
-            h(
-              Text,
-              { key: item.name, dimColor: true },
-              `/${item.name} - ${item.description}`
-            )
-          )
-        )
-      : null,
     busy && spinnerText
       ? h(
           Box,
@@ -493,6 +688,14 @@ function InteractiveInkApp({
           h(Text, { dimColor: true }, statusText)
         )
       : null,
+    belowSections.length > 0
+      ? h(
+          Box,
+          { flexDirection: "column", marginTop: 1 },
+          ...belowSections.map((section) => h(Text, { key: section.id }, section.content))
+        )
+      : null
+    ,
     h(
       Box,
       { marginTop: 1 },
@@ -503,7 +706,26 @@ function InteractiveInkApp({
         onSubmit: handleSubmit,
         focus: ready && !busy,
       })
-    )
+    ),
+    suggestions.length > 0
+      ? h(
+          Box,
+          { flexDirection: "column", marginTop: 1 },
+          ...suggestions.map((item, index) =>
+            h(
+              Text,
+              {
+                key: item.name,
+                dimColor: index !== selectedIndex,
+                bold: index === selectedIndex,
+              },
+              index === selectedIndex
+                ? `> /${item.name} - ${item.description}`
+                : `  /${item.name} - ${item.description}`
+            )
+          )
+        )
+      : null
   );
 }
 
