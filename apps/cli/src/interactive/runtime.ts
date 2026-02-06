@@ -15,6 +15,10 @@ import { StatusCommand } from "../commands/slash/definitions/StatusCommand.js";
 import { ExitCommand } from "../commands/slash/definitions/ExitCommand.js";
 import { ConfigCommand } from "../commands/slash/definitions/ConfigCommand.js";
 import { SessionCommand } from "../commands/slash/definitions/SessionCommand.js";
+import { PermissionsCommand } from "../commands/slash/definitions/PermissionsCommand.js";
+import { TaskCommand } from "../commands/slash/definitions/TaskCommand.js";
+import { PermissionController } from "./PermissionController.js";
+import { TaskManager } from "./TaskManager.js";
 
 export interface InteractiveOptions {
   session?: string;
@@ -204,6 +208,9 @@ export async function createInteractiveRuntime(
   configManager: Awaited<ReturnType<typeof getConfigManager>>,
   options: InteractiveOptions
 ): Promise<InteractiveRuntime> {
+  const loadedConfig = await configManager.load();
+  const permissionController = new PermissionController(loadedConfig.permissions);
+
   // Load skills metadata
   const skillLoader = new SkillLoader();
   const skillsMetadata = await skillLoader.discoverSkills();
@@ -293,9 +300,19 @@ export async function createInteractiveRuntime(
   });
 
   // Combine built-in tools with MCP tools
-  const allTools = [...registry.getAll(), ...mcpManager.getTools()];
+  const allTools = [...registry.getAll(), ...mcpManager.getTools()].map((tool) => ({
+    ...tool,
+    execute: async (params: any): Promise<string> => {
+      const decision = permissionController.evaluate(tool.name, params);
+      await permissionController.recordAudit(tool.name, params, decision);
+      if (!decision.allowed) {
+        return `Permission denied for ${tool.name}: ${decision.reason}`;
+      }
+      return tool.execute(params);
+    },
+  }));
 
-  subAgentRuntime.createManager(sessionId, {
+  const subAgentManager = subAgentRuntime.createManager(sessionId, {
     tools: allTools,
     defaultProvider: llmProvider,
     providerFactory: (profile) =>
@@ -311,6 +328,7 @@ export async function createInteractiveRuntime(
     maxConcurrent: 2,
     maxDepth: 2,
   });
+  const taskManager = new TaskManager(subAgentManager);
 
   // Create agent
   const agent = new Agent({
@@ -340,6 +358,8 @@ export async function createInteractiveRuntime(
   slashRegistry.register(new ExitCommand());
   slashRegistry.register(new ConfigCommand());
   slashRegistry.register(new SessionCommand());
+  slashRegistry.register(new PermissionsCommand());
+  slashRegistry.register(new TaskCommand());
 
   async function runInput(
     input: string,
@@ -368,9 +388,7 @@ export async function createInteractiveRuntime(
 
       if (event.type === "tool_output") {
         const toolName = toolCallNameMap.get(event.data.id) || "tool";
-        const questionnaire = toolName === "answer_questions"
-          ? parseAnswerQuestionsPayload(event.data.result)
-          : null;
+        const questionnaire = parseAnswerQuestionsPayload(event.data.result);
         onEvent({
           type: event.type,
           data: event.data,
@@ -415,6 +433,8 @@ export async function createInteractiveRuntime(
       session,
       configManager,
       mcpManager,
+      permissionController,
+      taskManager,
       registry: slashRegistry,
       cleanup: async () => {
         await mcpManager.close();

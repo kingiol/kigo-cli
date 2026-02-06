@@ -2,6 +2,8 @@
 import { Agent, Session } from '@kigo/core';
 import { MCPManager } from '@kigo/mcp';
 import { getConfigManager } from '../../config/ConfigManager.js';
+import { PermissionController } from '../../interactive/PermissionController.js';
+import { TaskManager } from '../../interactive/TaskManager.js';
 
 export type ConfigManager = Awaited<ReturnType<typeof getConfigManager>>;
 
@@ -10,6 +12,8 @@ export interface CommandContext {
     session: Session;
     configManager: ConfigManager;
     mcpManager: MCPManager;
+    permissionController?: PermissionController;
+    taskManager?: TaskManager;
     // Function to clean up resources (close connections, etc.)
     cleanup?: () => Promise<void>;
     registry: ISlashCommandRegistry;

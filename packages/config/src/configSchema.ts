@@ -19,6 +19,18 @@ const DEFAULT_SKILLS_CONFIG = {
   userSkillsDir: '~/.kigo/skills',
 } as const;
 
+const DEFAULT_PERMISSIONS_CONFIG: {
+  allow: string[];
+  block: string[];
+  dontAsk: boolean;
+  auditLogPath: string;
+} = {
+  allow: [],
+  block: [],
+  dontAsk: false,
+  auditLogPath: '~/.kigo/permission-audit.log',
+};
+
 // Model configuration
 export const ModelConfigSchema = z.object({
   name: z.string().default('gpt-4o'),
@@ -58,17 +70,27 @@ export const SkillsConfigSchema = z.object({
   userSkillsDir: z.string().default('~/.kigo/skills'),
 });
 
+// Permissions configuration
+export const PermissionsConfigSchema = z.object({
+  allow: z.array(z.string()).default([]),
+  block: z.array(z.string()).default([]),
+  dontAsk: z.boolean().default(false),
+  auditLogPath: z.string().default('~/.kigo/permission-audit.log'),
+});
+
 // Main Kigo configuration
 export const KigoConfigSchema = z.object({
   model: ModelConfigSchema.default(DEFAULT_MODEL_CONFIG),
   cli: CLIConfigSchema.default(DEFAULT_CLI_CONFIG),
   mcpServers: z.array(MCPServerConfigSchema).default([]),
   skills: SkillsConfigSchema.default(DEFAULT_SKILLS_CONFIG),
+  permissions: PermissionsConfigSchema.default(DEFAULT_PERMISSIONS_CONFIG),
 }).default({
   model: DEFAULT_MODEL_CONFIG,
   cli: DEFAULT_CLI_CONFIG,
   mcpServers: [],
   skills: DEFAULT_SKILLS_CONFIG,
+  permissions: DEFAULT_PERMISSIONS_CONFIG,
 });
 
 // Export types
@@ -76,6 +98,7 @@ export type ModelConfig = z.infer<typeof ModelConfigSchema>;
 export type CLIConfig = z.infer<typeof CLIConfigSchema>;
 export type MCPServerConfig = z.infer<typeof MCPServerConfigSchema>;
 export type SkillsConfig = z.infer<typeof SkillsConfigSchema>;
+export type PermissionsConfig = z.infer<typeof PermissionsConfigSchema>;
 export type KigoConfig = z.infer<typeof KigoConfigSchema>;
 
 // Default configuration
@@ -84,4 +107,5 @@ export const DEFAULT_CONFIG: KigoConfig = {
   cli: DEFAULT_CLI_CONFIG,
   mcpServers: [],
   skills: DEFAULT_SKILLS_CONFIG,
+  permissions: DEFAULT_PERMISSIONS_CONFIG,
 };

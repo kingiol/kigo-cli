@@ -14,6 +14,7 @@ describe('@kigo/tools', () => {
         expect(tools.registry.get('list_directory')).toBeDefined();
         expect(tools.registry.get('glob_search')).toBeDefined();
         expect(tools.registry.get('answer_questions')).toBeDefined();
+        expect(tools.registry.get('ask_user_question')).toBeDefined();
     });
 
     it('should export schemas', () => {

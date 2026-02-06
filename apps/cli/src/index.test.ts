@@ -26,4 +26,18 @@ describe("@kingiol/kigo-cli", () => {
       Authorization: "Bearer token",
     });
   });
+
+  it("should parse permissions config", () => {
+    const parsed = config.KigoConfigSchema.parse({
+      permissions: {
+        allow: ["read_*"],
+        block: ["Bash(rm -rf *)"],
+        dontAsk: true,
+      },
+    });
+
+    expect(parsed.permissions.allow).toEqual(["read_*"]);
+    expect(parsed.permissions.block).toEqual(["Bash(rm -rf *)"]);
+    expect(parsed.permissions.dontAsk).toBe(true);
+  });
 });

@@ -163,7 +163,6 @@ function InteractiveInkApp({
     (event: RuntimeEvent) => {
       if (
         event.type === "tool_output" &&
-        event.toolName === "answer_questions" &&
         event.questionnaire &&
         !event.data.error
       ) {
@@ -191,15 +190,15 @@ function InteractiveInkApp({
 
       if (event.type === "tool_output") {
         flushCurrentText();
-        if (event.toolName === "answer_questions" && event.questionnaire) {
+        if (event.questionnaire) {
           appendSection("tool_output", "已收到问卷，请按顺序回答。");
         } else if (event.data.error) {
           appendSection("tool_output", `Error: ${event.data.error}`);
         } else {
-        appendSection(
-          "tool_output",
-          renderToolOutputPlain(event.toolName || "tool", event.data.result)
-        );
+          appendSection(
+            "tool_output",
+            renderToolOutputPlain(event.toolName || "tool", event.data.result)
+          );
         }
         setSpinnerText("Thinking...");
         return;

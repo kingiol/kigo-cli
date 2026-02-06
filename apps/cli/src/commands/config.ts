@@ -52,6 +52,12 @@ export function configCommands(program: Command): void {
           projectSkillsDir: ".kigo/skills",
           userSkillsDir: "~/.kigo/skills",
         },
+        permissions: {
+          allow: [],
+          block: [],
+          dontAsk: false,
+          auditLogPath: "~/.kigo/permission-audit.log",
+        },
       });
       console.log("Config initialized at:", manager.getPath());
     });
