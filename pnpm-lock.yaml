@@ -38,9 +38,6 @@ importers:
 
   apps/cli:
     dependencies:
-      '@kigo/config':
-        specifier: workspace:*
-        version: link:../../packages/config
       better-sqlite3:
         specifier: ^12.6.2
         version: 12.6.2
@@ -192,9 +189,6 @@ importers:
       '@types/js-yaml':
         specifier: ^4.0.9
         version: 4.0.9
-      tsup:
-        specifier: ^8.2.1
-        version: 8.5.1(tsx@4.21.0)(typescript@5.9.3)
       typescript:
         specifier: ^5.7.3
         version: 5.9.3

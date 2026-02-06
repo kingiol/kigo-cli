@@ -1,6 +1,6 @@
 {
   "name": "@kingiol/kigo-cli",
-  "version": "0.1.12",
+  "version": "0.1.16",
   "description": "AI-powered coding assistant CLI - Your intelligent pair programming companion",
   "keywords": [
     "ai",
@@ -67,7 +67,6 @@
     "registry": "https://registry.npmjs.org/"
   },
   "dependencies": {
-    "@kigo/config": "workspace:*",
     "better-sqlite3": "^12.6.2",
     "chalk": "^5.6.2",
     "commander": "^14.0.2",

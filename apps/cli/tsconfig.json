@@ -16,7 +16,9 @@
       "@kigo/auth": ["../../packages/auth/src/index.ts"],
       "@kigo/auth/*": ["../../packages/auth/src/*"],
       "@kigo/lsp": ["../../packages/lsp/src/index.ts"],
-      "@kigo/lsp/*": ["../../packages/lsp/src/*"]
+      "@kigo/lsp/*": ["../../packages/lsp/src/*"],
+      "@kigo/config": ["../../packages/config/src/index.ts"],
+      "@kigo/config/*": ["../../packages/config/src/*"]
     }
   },
   "include": ["src/**/*"],
@@ -24,6 +26,7 @@
     {"path": "../../packages/core"},
     {"path": "../../packages/tools"},
     {"path": "../../packages/mcp"},
-    {"path": "../../packages/auth"}
+    {"path": "../../packages/auth"},
+    {"path": "../../packages/config"}
   ]
 }
