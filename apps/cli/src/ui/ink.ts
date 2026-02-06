@@ -39,7 +39,8 @@ type ReactModule = typeof import("react");
 type InkModule = typeof import("ink");
 type InkTextInputModule = typeof import("ink-text-input");
 
-const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
+const ANSI_ESCAPE = "\u001b";
+const ANSI_PATTERN = new RegExp(`${ANSI_ESCAPE}\\[[0-9;]*m`, "g");
 
 function stripAnsi(input: string): string {
   return input.replace(ANSI_PATTERN, "");
@@ -610,10 +611,6 @@ function InteractiveInkApp({
     }
     return map;
   }, [toolOutputs]);
-
-  const activeToolOutput = activeToolOutputId
-    ? toolOutputMap.get(activeToolOutputId) || null
-    : null;
 
   return h(
     Box,
