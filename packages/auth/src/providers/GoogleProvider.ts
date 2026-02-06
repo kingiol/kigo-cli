@@ -6,12 +6,22 @@ import { OAuthProvider } from '../OAuthProvider.js';
 import { generatePKCE, generateState } from '../PKCE.js';
 import { TokenStorage, type OAuthTokens } from '../TokenStorage.js';
 import axios from 'axios';
+import open from 'open';
+
+interface GoogleModel {
+  name: string;
+  supportedGenerationMethods?: string[];
+}
+
+interface GoogleModelsResponse {
+  models?: GoogleModel[];
+}
 
 export class GoogleProvider extends OAuthProvider {
   private readonly clientId = '77185425430.apps.googleusercontent.com';
   private readonly authUrl = 'https://accounts.google.com/o/oauth2/v2/auth';
   private readonly tokenUrl = 'https://oauth2.googleapis.com/token';
-  private readonly redirectUri = 'http://localhost:8085/oauth2callback';
+  private readonly redirectUri = `http://localhost:${this.callbackPort}/oauth2callback`;
 
   async login(): Promise<OAuthTokens> {
     const { verifier, challenge } = generatePKCE();
@@ -28,8 +38,16 @@ export class GoogleProvider extends OAuthProvider {
     authUrl.searchParams.set('access_type', 'offline');
     authUrl.searchParams.set('prompt', 'consent');
 
-    // Start callback server
-    const code = await this.startCallbackServer(state);
+    const callbackPromise = this.startCallbackServer(state);
+    const authUrlString = authUrl.toString();
+
+    try {
+      await open(authUrlString);
+    } catch {
+      console.warn(`Failed to open browser automatically. Open this URL manually:\n${authUrlString}`);
+    }
+
+    const code = await callbackPromise;
 
     // Exchange code for tokens
     const response = await axios.post(
@@ -83,13 +101,14 @@ export class GoogleProvider extends OAuthProvider {
 
   async listModels(accessToken: string): Promise<string[]> {
     try {
-      const response = await axios.get('https://generativelanguage.googleapis.com/v1beta/models', {
+      const response = await axios.get<GoogleModelsResponse>('https://generativelanguage.googleapis.com/v1beta/models', {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
 
-      return response.data.models
-        .filter((m: any) => m.supportedGenerationMethods?.includes('generateContent'))
-        .map((m: any) => `google/${m.name}`);
+      const models = response.data.models ?? [];
+      return models
+        .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
+        .map(m => `google/${m.name}`);
     } catch {
       // Fallback to hardcoded list
       return [
