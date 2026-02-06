@@ -14,22 +14,31 @@
 
 | 功能 | Claude Code | Kigo Node.js | 优先级 |
 |------|-------------|---------------|--------|
-| 代理系统（Task） | ✅ | ❌ | 高 |
-| 计划模式 | ✅ | ❌ | 高 |
-| 用户交互工具 | ✅ | ❌ | 高 |
+| 代理系统（Task） | ✅ | 🟡 部分完成 | 高 |
+| 计划模式 | ✅ | 🟡 部分完成 | 高 |
+| 用户交互工具 | ✅ | ✅ 已完成（基础能力） | 高 |
 | IDE 集成 | ✅ | ❌ | 中 |
-| 权限控制系统 | ✅ | ❌ | 高 |
+| 权限控制系统 | ✅ | 🟡 部分完成 | 高 |
 | 沙盒环境 | ✅ | ❌ | 中 |
 | Hooks 系统 | ✅ | ❌ | 中 |
 | 多模态文件分析 | ✅ | ❌ | 低 |
 | Jupyter 笔记本 | ✅ | ❌ | 低 |
 | 扩展思考模式 | ✅ | ❌ | 低 |
 | 结构化输出 | ✅ | ❌ | 低 |
-| 工具搜索 | ✅ | ❌ | 中 |
+| 工具搜索 | ✅ | ✅ 已完成（CLI 侧） | 中 |
 
 ---
 
 ## 1. 代理系统（Task 工具）
+
+### 当前状态
+
+- ✅ 已实现：Task profile（general-purpose/explore/plan/claude-code-guide/statusline-setup）
+- ✅ 已实现：后台任务（`/task run ... --background`）
+- ✅ 已实现：任务恢复（`/task resume <taskId>`）
+- ✅ 已实现：任务输出检索（`task_output` 工具 + `/task output <taskId>`）
+- ✅ 已实现：任务持久化（按 session 落盘）
+- 🟡 待补齐：任务并行度、调度策略和跨会话管理能力仍较基础
 
 ### 功能描述
 
@@ -63,6 +72,14 @@ Claude Code 的 Task 工具允许启动专门的子代理来处理不同类型�
 
 ## 2. 计划模式（Plan Mode）
 
+### 当前状态
+
+- ✅ 已实现：Plan Mode 开关（`/plan on|off|status`）
+- ✅ 已实现：Plan Mode 只读约束（限制为只读工具白名单）
+- ✅ 已实现：Shift+Tab 快捷切换 Agent/Plan 模式（UI）
+- 🟡 待补齐：用户确认后再执行的强制工作流（EnterPlanMode/ExitPlanMode 完整语义）
+- 🟡 待补齐：计划文件自动生成与审阅闭环
+
 ### 功能描述
 
 EnterPlanMode / ExitPlanMode 工具实现在执行任务前先探索代码库、设计方案，用户确认后再实施。
@@ -85,6 +102,12 @@ EnterPlanMode / ExitPlanMode 工具实现在执行任务前先探索代码库、
 ---
 
 ## 3. 用户交互工具（AskUserQuestion）
+
+### 当前状态
+
+- ✅ 已实现：`ask_user_question` 工具（header + options + other）
+- ✅ 已实现：问卷交互流程（创建、答题、提交、回传）
+- ✅ 已实现：CLI UI 对问卷的交互式渲染与输入
 
 ### 功能描述
 
@@ -129,6 +152,14 @@ VS Code / JetBrains 等原生 IDE 插件集成。
 ---
 
 ## 5. 权限控制系统
+
+### 当前状态
+
+- ✅ 已实现：allow/block/dontAsk 配置模型
+- ✅ 已实现：运行时权限拦截（工具执行前判定）
+- ✅ 已实现：临时权限提升（`/permissions allow-once <rule>`）
+- ✅ 已实现：权限审计日志落盘
+- 🟡 待补齐：交互式审批（每次风险操作弹窗确认）与更细粒度风险分级
 
 ### 功能描述
 
@@ -263,6 +294,12 @@ VS Code / JetBrains 等原生 IDE 插件集成。
 
 ## 12. 工具搜索
 
+### 当前状态
+
+- ✅ 已实现：工具名称搜索（`/tools <keyword>`）
+- ✅ 已实现：工具描述搜索（`/tools <keyword>`）
+- ✅ 已实现：分类展示（builtin / mcp）
+
 ### 功能描述
 
 动态搜索和发现可用工具。
@@ -285,7 +322,7 @@ VS Code / JetBrains 等原生 IDE 插件集成。
 
 ### 第二阶段（中优先级）
 
-4. 计划模式
+4. 计划模式（完善确认流与计划产物）
 5. Hooks 系统
 6. IDE 集成基础
 
