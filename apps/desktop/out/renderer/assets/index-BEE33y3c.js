@@ -14806,6 +14806,62 @@ const KigoConfigSchema = objectType({
   skills: DEFAULT_SKILLS_CONFIG,
   permissions: DEFAULT_PERMISSIONS_CONFIG
 });
+const NAV_ITEMS = [
+  {
+    to: "/sessions",
+    label: "Sessions",
+    end: true,
+    icon: "M4 4h16v3H4V4Zm0 6h16v3H4v-3Zm0 6h10v3H4v-3Z"
+  },
+  {
+    to: "/mcp",
+    label: "MCP Servers",
+    icon: "M4 6h7v5H4V6Zm9 0h7v5h-7V6ZM4 13h7v5H4v-5Zm9 2.5h7M16.5 13v5"
+  },
+  {
+    to: "/skills",
+    label: "Skills",
+    icon: "M12 4 5 8v4c0 4 2.6 7.5 7 8 4.4-.5 7-4 7-8V8l-7-4Zm0 5v7m-3-4h6"
+  },
+  {
+    to: "/auth",
+    label: "Auth",
+    icon: "M12 4a5 5 0 0 1 5 5v2h1.5A1.5 1.5 0 0 1 20 12.5v5A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5v-5A1.5 1.5 0 0 1 5.5 11H7V9a5 5 0 0 1 5-5Zm0 2a3 3 0 0 0-3 3v2h6V9a3 3 0 0 0-3-3Z"
+  },
+  {
+    to: "/settings",
+    label: "Settings",
+    icon: "M12 4.5 13.3 6l1.9.3.8 1.7-1.3 1.4.3 2L12 12.3l-3 1.1.3-2-1.3-1.4.8-1.7L10.7 6 12 4.5Zm0 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"
+  }
+];
+const RoleLabel = {
+  user: "User",
+  assistant: "Assistant",
+  system: "System"
+};
+function getSessionVisual(session, isActive) {
+  if (isActive) return { tone: "active", priority: "Live", tags: ["Focused"] };
+  const now = Date.now();
+  const ageMs = now - session.updatedAt;
+  const hour = 60 * 60 * 1e3;
+  const day = 24 * hour;
+  const tags = [];
+  if (session.messageCount >= 24) tags.push("Deep");
+  if (session.messageCount >= 8 && session.messageCount < 24) tags.push("Flow");
+  if (session.messageCount === 0) tags.push("Draft");
+  if (ageMs <= day) tags.push("Recent");
+  if (now - session.createdAt <= 2 * hour) tags.push("New");
+  if (ageMs <= 6 * hour || session.messageCount >= 18) {
+    return { tone: "hot", priority: "High", tags };
+  }
+  if (ageMs <= 3 * day || session.messageCount >= 7) {
+    return { tone: "warm", priority: "Medium", tags };
+  }
+  return { tone: "cold", priority: "Low", tags };
+}
+function NavIcon({ path }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { className: "nav-icon", viewBox: "0 0 24 24", fill: "none", "aria-hidden": "true", children: /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: path, stroke: "currentColor", strokeWidth: "1.8", strokeLinecap: "round", strokeLinejoin: "round" }) });
+}
 function App() {
   const [configSummary, setConfigSummary] = reactExports.useState(null);
   const [config, setConfig] = reactExports.useState(null);
@@ -15507,6 +15563,13 @@ function App() {
   const filteredAudit = reactExports.useMemo(() => {
     return auditRecords.filter((record) => auditFilters[record.type]);
   }, [auditRecords, auditFilters]);
+  const workspaceLabel = reactExports.useMemo(() => {
+    if (!configPath) return "Loading workspace...";
+    const normalized = configPath.replace(/\\/g, "/");
+    const slashIndex = normalized.lastIndexOf("/");
+    if (slashIndex <= 0) return configPath;
+    return normalized.slice(0, slashIndex);
+  }, [configPath]);
   const toggleAuditFilter = (type2) => {
     setAuditFilters((prev) => ({ ...prev, [type2]: !prev[type2] }));
   };
@@ -15540,13 +15603,19 @@ function App() {
         /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "brand-dot" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Kigo Desktop" })
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("nav", { className: "nav", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(NavLink, { to: "/sessions", end: true, className: ({ isActive }) => `nav-item ${isActive ? "is-active" : ""}`, children: "Sessions" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(NavLink, { to: "/mcp", className: ({ isActive }) => `nav-item ${isActive ? "is-active" : ""}`, children: "MCP Servers" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(NavLink, { to: "/skills", className: ({ isActive }) => `nav-item ${isActive ? "is-active" : ""}`, children: "Skills" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(NavLink, { to: "/auth", className: ({ isActive }) => `nav-item ${isActive ? "is-active" : ""}`, children: "Auth" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(NavLink, { to: "/settings", className: ({ isActive }) => `nav-item ${isActive ? "is-active" : ""}`, children: "Settings" })
-      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("nav", { className: "nav", children: NAV_ITEMS.map((item) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+        NavLink,
+        {
+          to: item.to,
+          end: item.end,
+          className: ({ isActive }) => `nav-item ${isActive ? "is-active" : ""}`,
+          children: /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "nav-item-content", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(NavIcon, { path: item.icon }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: item.label })
+          ] })
+        },
+        item.to
+      )) }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sessions", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sessions-header", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Recent Sessions" }),
@@ -15582,28 +15651,59 @@ function App() {
             }
           )
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sessions-list", children: filteredSessions.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "empty", children: "No sessions yet." }) : filteredSessions.map((session) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `session-item ${sessionId === session.id ? "active" : ""}`, children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "session-main", onClick: () => loadSession(session.id), children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "session-title", children: session.title ?? "Untitled session" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "session-meta", children: new Date(session.updatedAt).toLocaleString() })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "row-actions", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost small", onClick: () => beginRenameSession(session), children: "Rename" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost small", onClick: () => requestDeleteSession(session.id), children: "Delete" })
-          ] })
-        ] }, session.id)) })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sessions-list", children: filteredSessions.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "empty", children: "No sessions yet." }) : filteredSessions.map((session) => {
+          const visual = getSessionVisual(session, sessionId === session.id);
+          return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `session-item tone-${visual.tone} ${sessionId === session.id ? "active" : ""}`, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "session-main", onClick: () => loadSession(session.id), children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "session-title-row", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "session-title", children: session.title ?? "Untitled session" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `session-priority tone-${visual.tone}`, children: visual.priority })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "session-meta", children: new Date(session.updatedAt).toLocaleString() }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "session-tags", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "session-tag", children: [
+                  session.messageCount,
+                  " msgs"
+                ] }),
+                visual.tags.slice(0, 2).map((tag) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "session-tag subtle", children: tag }, `${session.id}-${tag}`))
+              ] })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "row-actions", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost small", onClick: () => beginRenameSession(session), children: "Rename" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost small", onClick: () => requestDeleteSession(session.id), children: "Delete" })
+            ] })
+          ] }, session.id);
+        }) })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sidebar-footer", children: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "secondary", onClick: startNewSession, children: "New Session" }) })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { className: "main", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "topbar", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "title", children: "Project Alpha" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "subtitle", children: "Workspace: ~/Projects/alpha" })
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "topbar-main", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "title", children: "Kigo Workspace" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "subtitle", children: [
+            "Workspace: ",
+            workspaceLabel
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "topbar-meta", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "top-pill", children: [
+              "Model: ",
+              configSummary?.model ?? "unknown"
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "top-pill", children: [
+              "Provider: ",
+              configSummary?.provider ?? "unknown"
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "top-pill neutral", children: [
+              "Sessions: ",
+              sessions.length
+            ] })
+          ] })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "actions", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", children: "Search" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "primary", children: "Run" })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: () => sessionSearchRef.current?.focus(), children: "Find Sessions" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "secondary", onClick: () => chatInputRef.current?.focus(), children: "Focus Chat" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "primary", onClick: startNewSession, children: "New Session" })
         ] })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("section", { className: "content", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Routes, { children: [
@@ -15648,16 +15748,40 @@ function App() {
                   /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "badge", children: "Streaming" })
                 ] }),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "panel-body", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "message muted", children: "Welcome to Kigo Desktop." }),
-                  configSummary ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "message muted", children: [
-                    "Config: ",
-                    configSummary.model,
-                    " (",
-                    configSummary.provider,
-                    ") · ",
-                    configSummary.path
-                  ] }) : null,
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chat-messages", children: messages.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "message muted", children: "Send a message to begin a session." }) : messages.map((message, index) => /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `message ${message.role}`, children: message.content || (message.role === "assistant" ? "..." : "") }, `${message.role}-${index}`)) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chat-hero", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chat-hero-title", children: "Ask, inspect, approve, ship" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chat-hero-subtitle", children: configSummary ? `${configSummary.model} · ${configSummary.provider}` : "Preparing model context..." }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chat-hero-metrics", children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "chat-chip", children: [
+                        "Session: ",
+                        sessionId ? sessionId.slice(0, 8) : "new"
+                      ] }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "chat-chip", children: [
+                        messages.length,
+                        " timeline events"
+                      ] }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "chat-chip", children: [
+                        "Pending approvals: ",
+                        pendingApprovals.length
+                      ] })
+                    ] })
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chat-stream", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chat-stream-header", children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Live Timeline" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "chat-stream-subtle", children: "Use `/help` for commands" })
+                    ] }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chat-messages", children: messages.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "message muted", children: "Send a message to begin a session." }) : messages.map((message, index) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `message ${message.role}`, children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "message-head", children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `message-role ${message.role}`, children: RoleLabel[message.role] }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "message-index", children: [
+                          "#",
+                          index + 1
+                        ] })
+                      ] }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: message.content || (message.role === "assistant" ? "..." : "") })
+                    ] }, `${message.role}-${index}`)) })
+                  ] }),
                   chatError ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "message error-text", children: chatError }) : null,
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chat-input", children: [
                     /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -15676,6 +15800,7 @@ function App() {
                     ),
                     /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "primary", onClick: sendMessage, disabled: isSending || !chatInput.trim(), children: isSending ? "Sending..." : "Send" })
                   ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "slash-row", children: ["/help", "/status", "/config", "/session"].map((command) => /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost small", onClick: () => setChatInput(command), disabled: isSending, children: command }, command)) }),
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "export-row", children: [
                     /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost small", onClick: () => exportSession("markdown"), children: "Export Markdown" }),
                     /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost small", onClick: () => exportSession("json"), children: "Export JSON" }),

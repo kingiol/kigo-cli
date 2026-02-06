@@ -72,6 +72,82 @@ type SessionItem = {
   messageCount: number;
 };
 
+type NavItem = {
+  to: string;
+  label: string;
+  icon: string;
+  end?: boolean;
+};
+
+type SessionTone = 'active' | 'hot' | 'warm' | 'cold';
+
+const NAV_ITEMS: NavItem[] = [
+  {
+    to: '/sessions',
+    label: 'Sessions',
+    end: true,
+    icon: 'M4 4h16v3H4V4Zm0 6h16v3H4v-3Zm0 6h10v3H4v-3Z'
+  },
+  {
+    to: '/mcp',
+    label: 'MCP Servers',
+    icon: 'M4 6h7v5H4V6Zm9 0h7v5h-7V6ZM4 13h7v5H4v-5Zm9 2.5h7M16.5 13v5'
+  },
+  {
+    to: '/skills',
+    label: 'Skills',
+    icon: 'M12 4 5 8v4c0 4 2.6 7.5 7 8 4.4-.5 7-4 7-8V8l-7-4Zm0 5v7m-3-4h6'
+  },
+  {
+    to: '/auth',
+    label: 'Auth',
+    icon: 'M12 4a5 5 0 0 1 5 5v2h1.5A1.5 1.5 0 0 1 20 12.5v5A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5v-5A1.5 1.5 0 0 1 5.5 11H7V9a5 5 0 0 1 5-5Zm0 2a3 3 0 0 0-3 3v2h6V9a3 3 0 0 0-3-3Z'
+  },
+  {
+    to: '/settings',
+    label: 'Settings',
+    icon: 'M12 4.5 13.3 6l1.9.3.8 1.7-1.3 1.4.3 2L12 12.3l-3 1.1.3-2-1.3-1.4.8-1.7L10.7 6 12 4.5Zm0 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z'
+  }
+];
+
+const RoleLabel: Record<ChatMessage['role'], string> = {
+  user: 'User',
+  assistant: 'Assistant',
+  system: 'System'
+};
+
+function getSessionVisual(session: SessionItem, isActive: boolean): { tone: SessionTone; priority: string; tags: string[] } {
+  if (isActive) return { tone: 'active', priority: 'Live', tags: ['Focused'] };
+
+  const now = Date.now();
+  const ageMs = now - session.updatedAt;
+  const hour = 60 * 60 * 1000;
+  const day = 24 * hour;
+  const tags: string[] = [];
+
+  if (session.messageCount >= 24) tags.push('Deep');
+  if (session.messageCount >= 8 && session.messageCount < 24) tags.push('Flow');
+  if (session.messageCount === 0) tags.push('Draft');
+  if (ageMs <= day) tags.push('Recent');
+  if (now - session.createdAt <= 2 * hour) tags.push('New');
+
+  if (ageMs <= 6 * hour || session.messageCount >= 18) {
+    return { tone: 'hot', priority: 'High', tags };
+  }
+  if (ageMs <= 3 * day || session.messageCount >= 7) {
+    return { tone: 'warm', priority: 'Medium', tags };
+  }
+  return { tone: 'cold', priority: 'Low', tags };
+}
+
+function NavIcon({ path }: { path: string }) {
+  return (
+    <svg className="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d={path} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export default function App() {
   const [configSummary, setConfigSummary] = useState<ConfigSummary | null>(null);
   const [config, setConfig] = useState<KigoConfig | null>(null);
@@ -873,6 +949,14 @@ export default function App() {
     return auditRecords.filter((record) => auditFilters[record.type]);
   }, [auditRecords, auditFilters]);
 
+  const workspaceLabel = useMemo(() => {
+    if (!configPath) return 'Loading workspace...';
+    const normalized = configPath.replace(/\\/g, '/');
+    const slashIndex = normalized.lastIndexOf('/');
+    if (slashIndex <= 0) return configPath;
+    return normalized.slice(0, slashIndex);
+  }, [configPath]);
+
   const toggleAuditFilter = (type: AuditRecord['type']) => {
     setAuditFilters((prev) => ({ ...prev, [type]: !prev[type] }));
   };
@@ -911,21 +995,19 @@ export default function App() {
           <span>Kigo Desktop</span>
         </div>
         <nav className="nav">
-          <NavLink to="/sessions" end className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}>
-            Sessions
-          </NavLink>
-          <NavLink to="/mcp" className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}>
-            MCP Servers
-          </NavLink>
-          <NavLink to="/skills" className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}>
-            Skills
-          </NavLink>
-          <NavLink to="/auth" className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}>
-            Auth
-          </NavLink>
-          <NavLink to="/settings" className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}>
-            Settings
-          </NavLink>
+          {NAV_ITEMS.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
+            >
+              <span className="nav-item-content">
+                <NavIcon path={item.icon} />
+                <span>{item.label}</span>
+              </span>
+            </NavLink>
+          ))}
         </nav>
         <div className="sessions">
           <div className="sessions-header">
@@ -963,22 +1045,36 @@ export default function App() {
             {filteredSessions.length === 0 ? (
               <div className="empty">No sessions yet.</div>
             ) : (
-              filteredSessions.map((session) => (
-                <div key={session.id} className={`session-item ${sessionId === session.id ? 'active' : ''}`}>
-                  <button className="session-main" onClick={() => loadSession(session.id)}>
-                    <div className="session-title">{session.title ?? 'Untitled session'}</div>
-                    <div className="session-meta">{new Date(session.updatedAt).toLocaleString()}</div>
-                  </button>
-                  <div className="row-actions">
-                  <button className="ghost small" onClick={() => beginRenameSession(session)}>
-                      Rename
+              filteredSessions.map((session) => {
+                const visual = getSessionVisual(session, sessionId === session.id);
+                return (
+                  <div key={session.id} className={`session-item tone-${visual.tone} ${sessionId === session.id ? 'active' : ''}`}>
+                    <button className="session-main" onClick={() => loadSession(session.id)}>
+                      <div className="session-title-row">
+                        <div className="session-title">{session.title ?? 'Untitled session'}</div>
+                        <span className={`session-priority tone-${visual.tone}`}>{visual.priority}</span>
+                      </div>
+                      <div className="session-meta">{new Date(session.updatedAt).toLocaleString()}</div>
+                      <div className="session-tags">
+                        <span className="session-tag">{session.messageCount} msgs</span>
+                        {visual.tags.slice(0, 2).map((tag) => (
+                          <span key={`${session.id}-${tag}`} className="session-tag subtle">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
                     </button>
-                    <button className="ghost small" onClick={() => requestDeleteSession(session.id)}>
-                      Delete
-                    </button>
+                    <div className="row-actions">
+                      <button className="ghost small" onClick={() => beginRenameSession(session)}>
+                        Rename
+                      </button>
+                      <button className="ghost small" onClick={() => requestDeleteSession(session.id)}>
+                        Delete
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
@@ -991,13 +1087,25 @@ export default function App() {
 
       <main className="main">
         <header className="topbar">
-          <div>
-            <div className="title">Project Alpha</div>
-            <div className="subtitle">Workspace: ~/Projects/alpha</div>
+          <div className="topbar-main">
+            <div className="title">Kigo Workspace</div>
+            <div className="subtitle">Workspace: {workspaceLabel}</div>
+            <div className="topbar-meta">
+              <span className="top-pill">Model: {configSummary?.model ?? 'unknown'}</span>
+              <span className="top-pill">Provider: {configSummary?.provider ?? 'unknown'}</span>
+              <span className="top-pill neutral">Sessions: {sessions.length}</span>
+            </div>
           </div>
           <div className="actions">
-            <button className="ghost">Search</button>
-            <button className="primary">Run</button>
+            <button className="ghost" onClick={() => sessionSearchRef.current?.focus()}>
+              Find Sessions
+            </button>
+            <button className="secondary" onClick={() => chatInputRef.current?.focus()}>
+              Focus Chat
+            </button>
+            <button className="primary" onClick={startNewSession}>
+              New Session
+            </button>
           </div>
         </header>
 
@@ -1056,22 +1164,39 @@ export default function App() {
                       <span className="badge">Streaming</span>
                     </div>
                     <div className="panel-body">
-                      <div className="message muted">Welcome to Kigo Desktop.</div>
-                      {configSummary ? (
-                        <div className="message muted">
-                          Config: {configSummary.model} ({configSummary.provider}) · {configSummary.path}
+                      <div className="chat-hero">
+                        <div className="chat-hero-title">Ask, inspect, approve, ship</div>
+                        <div className="chat-hero-subtitle">
+                          {configSummary
+                            ? `${configSummary.model} · ${configSummary.provider}`
+                            : 'Preparing model context...'}
                         </div>
-                      ) : null}
-                      <div className="chat-messages">
-                        {messages.length === 0 ? (
-                          <div className="message muted">Send a message to begin a session.</div>
-                        ) : (
-                          messages.map((message, index) => (
-                            <div key={`${message.role}-${index}`} className={`message ${message.role}`}>
-                              {message.content || (message.role === 'assistant' ? '...' : '')}
-                            </div>
-                          ))
-                        )}
+                        <div className="chat-hero-metrics">
+                          <span className="chat-chip">Session: {sessionId ? sessionId.slice(0, 8) : 'new'}</span>
+                          <span className="chat-chip">{messages.length} timeline events</span>
+                          <span className="chat-chip">Pending approvals: {pendingApprovals.length}</span>
+                        </div>
+                      </div>
+                      <div className="chat-stream">
+                        <div className="chat-stream-header">
+                          <span>Live Timeline</span>
+                          <span className="chat-stream-subtle">Use `/help` for commands</span>
+                        </div>
+                        <div className="chat-messages">
+                          {messages.length === 0 ? (
+                            <div className="message muted">Send a message to begin a session.</div>
+                          ) : (
+                            messages.map((message, index) => (
+                              <div key={`${message.role}-${index}`} className={`message ${message.role}`}>
+                                <div className="message-head">
+                                  <span className={`message-role ${message.role}`}>{RoleLabel[message.role]}</span>
+                                  <span className="message-index">#{index + 1}</span>
+                                </div>
+                                <div>{message.content || (message.role === 'assistant' ? '...' : '')}</div>
+                              </div>
+                            ))
+                          )}
+                        </div>
                       </div>
                       {chatError ? <div className="message error-text">{chatError}</div> : null}
                       <div className="chat-input">
@@ -1089,6 +1214,13 @@ export default function App() {
                         <button className="primary" onClick={sendMessage} disabled={isSending || !chatInput.trim()}>
                           {isSending ? 'Sending...' : 'Send'}
                         </button>
+                      </div>
+                      <div className="slash-row">
+                        {['/help', '/status', '/config', '/session'].map((command) => (
+                          <button key={command} className="ghost small" onClick={() => setChatInput(command)} disabled={isSending}>
+                            {command}
+                          </button>
+                        ))}
                       </div>
                       <div className="export-row">
                         <button className="ghost small" onClick={() => exportSession('markdown')}>
