@@ -729,7 +729,7 @@ function InteractiveInkApp({
             h(
               Text,
               {
-                key: item.name,
+                key: `${item.name}-${index}`,
                 dimColor: index !== selectedIndex,
                 bold: index === selectedIndex,
               },
