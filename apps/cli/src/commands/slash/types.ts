@@ -14,6 +14,9 @@ export interface CommandContext {
     mcpManager: MCPManager;
     permissionController?: PermissionController;
     taskManager?: TaskManager;
+    isPlanModeEnabled?: () => boolean;
+    setPlanModeEnabled?: (enabled: boolean) => void;
+    toolsCatalog?: Array<{ name: string; description: string; source: 'builtin' | 'mcp' }>;
     // Function to clean up resources (close connections, etc.)
     cleanup?: () => Promise<void>;
     registry: ISlashCommandRegistry;

@@ -1,3 +1,6 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { SubAgentManager, SubAgentRunOptions } from "@kigo/core";
 
 export type TaskProfile =
@@ -35,10 +38,48 @@ function buildProfilePrompt(profile: TaskProfile): string {
   }
 }
 
+function sanitizeId(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function getTaskFilePath(sessionId: string): string {
+  return path.join(os.homedir(), ".kigo", "tasks", `${sanitizeId(sessionId)}.json`);
+}
+
 export class TaskManager {
   private tasks = new Map<string, TaskRecord>();
+  private taskFilePath: string;
 
-  constructor(private readonly subAgentManager: SubAgentManager) {}
+  constructor(
+    private readonly subAgentManager: SubAgentManager,
+    sessionId: string,
+  ) {
+    this.taskFilePath = getTaskFilePath(sessionId);
+    this.loadFromDisk();
+  }
+
+  private loadFromDisk(): void {
+    try {
+      const content = fs.readFileSync(this.taskFilePath, "utf-8");
+      const parsed = JSON.parse(content) as TaskRecord[];
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          if (item && item.id) {
+            this.tasks.set(item.id, item);
+          }
+        }
+      }
+    } catch {
+      // ignore if file does not exist or invalid
+    }
+  }
+
+  private saveToDisk(): void {
+    const dir = path.dirname(this.taskFilePath);
+    fs.mkdirSync(dir, { recursive: true });
+    const allTasks = Array.from(this.tasks.values()).sort((a, b) => b.createdAt - a.createdAt);
+    fs.writeFileSync(this.taskFilePath, JSON.stringify(allTasks, null, 2), "utf-8");
+  }
 
   private async executeTask(id: string, options: SubAgentRunOptions): Promise<void> {
     const task = this.tasks.get(id);
@@ -51,10 +92,12 @@ export class TaskManager {
       task.status = "completed";
       task.output = result.output;
       task.completedAt = Date.now();
+      this.saveToDisk();
     } catch (error) {
       task.status = "failed";
       task.error = error instanceof Error ? error.message : String(error);
       task.completedAt = Date.now();
+      this.saveToDisk();
     }
   }
 
@@ -76,6 +119,7 @@ export class TaskManager {
     };
 
     this.tasks.set(id, record);
+    this.saveToDisk();
 
     const runOptions: SubAgentRunOptions = {
       task: options.task,

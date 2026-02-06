@@ -100,6 +100,7 @@ function InteractiveInkApp({
   const [sections, setSections] = useState<OutputSection[]>([]);
   const [currentText, setCurrentText] = useState("");
   const [statusText, setStatusText] = useState("");
+  const [isPlanMode, setIsPlanMode] = useState(false);
   const [questionnaireState, setQuestionnaireState] = useState<QuestionnaireState | null>(null);
   const [questionnaireIntro, setQuestionnaireIntro] =
     useState<{ title?: string; instructions?: string } | null>(null);
@@ -229,6 +230,7 @@ function InteractiveInkApp({
       }
       runtimeRef.current = runtime;
       setStatusText(runtime.getStatusLine().render());
+      setIsPlanMode(runtime.isPlanModeEnabled());
       setReady(true);
     };
 
@@ -293,6 +295,7 @@ function InteractiveInkApp({
         }
       }
       setStatusText(runtime.getStatusLine().render());
+      setIsPlanMode(runtime.isPlanModeEnabled());
     },
     [appendSection, handleRuntimeEvent]
   );
@@ -460,6 +463,8 @@ function InteractiveInkApp({
           if (logs.length > 0) {
             appendSection("text", logs.join("\n"));
           }
+          setStatusText(runtime.getStatusLine().render());
+          setIsPlanMode(runtime.isPlanModeEnabled());
           return;
         }
       }
@@ -509,6 +514,8 @@ function InteractiveInkApp({
         if (logs.length > 0) {
           appendSection("text", logs.join("\n"));
         }
+        setStatusText(runtime.getStatusLine().render());
+        setIsPlanMode(runtime.isPlanModeEnabled());
         return;
       }
 
@@ -521,6 +528,7 @@ function InteractiveInkApp({
       setBusy(false);
       setSpinnerText("");
       setStatusText(runtime.getStatusLine().render());
+      setIsPlanMode(runtime.isPlanModeEnabled());
     },
     [
       busy,
@@ -532,7 +540,19 @@ function InteractiveInkApp({
     ]
   );
 
-  useInput((_input, key) => {
+  useInput((input, key) => {
+    const runtime = runtimeRef.current;
+    const isShiftTab =
+      input === "\u001b[Z" ||
+      (key.tab && (key as { shift?: boolean }).shift === true);
+    if (isShiftTab && runtime && !busy) {
+      const next = !runtime.isPlanModeEnabled();
+      runtime.setPlanModeEnabled(next);
+      setIsPlanMode(next);
+      setStatusText(runtime.getStatusLine().render());
+      return;
+    }
+
     if (key.escape && questionnaireState) {
       setQuestionnaireState(null);
       return;
@@ -716,6 +736,11 @@ function InteractiveInkApp({
         onSubmit: handleSubmit,
         focus: ready && !busy,
       })
+    ),
+    h(
+      Text,
+      { color: isPlanMode ? "yellow" : "green", bold: true },
+      `MODE: ${isPlanMode ? "PLAN" : "AGENT"}  |  Shift+Tab to toggle`
     ),
     suggestions.length > 0
       ? h(

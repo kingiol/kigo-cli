@@ -20,6 +20,7 @@ export * from './skill/skill.js';
 export * from './answer/answerQuestions.js';
 export * from './answer/askUserQuestion.js';
 export * from './agent/subAgent.js';
+export * from './agent/taskOutput.js';
 export * from './agent/runtime.js';
 
 // Re-export skill loader

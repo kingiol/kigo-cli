@@ -17,6 +17,8 @@ import { ConfigCommand } from "../commands/slash/definitions/ConfigCommand.js";
 import { SessionCommand } from "../commands/slash/definitions/SessionCommand.js";
 import { PermissionsCommand } from "../commands/slash/definitions/PermissionsCommand.js";
 import { TaskCommand } from "../commands/slash/definitions/TaskCommand.js";
+import { PlanCommand } from "../commands/slash/definitions/PlanCommand.js";
+import { ToolsCommand } from "../commands/slash/definitions/ToolsCommand.js";
 import { PermissionController } from "./PermissionController.js";
 import { TaskManager } from "./TaskManager.js";
 
@@ -202,6 +204,8 @@ export type InteractiveRuntime = {
   getStatusLine: () => StatusLine;
   getSessionId: () => string;
   getSlashRegistry: () => SlashCommandRegistry;
+  isPlanModeEnabled: () => boolean;
+  setPlanModeEnabled: (enabled: boolean) => void;
 };
 
 export async function createInteractiveRuntime(
@@ -299,10 +303,37 @@ export async function createInteractiveRuntime(
     getSessionId: () => sessionId,
   });
 
+  let planModeEnabled = false;
+  const readOnlyBuiltInTools = new Set<string>([
+    "read_file",
+    "list_directory",
+    "glob_search",
+    "grep_search",
+    "web_search",
+    "web_fetch",
+    "todo_read",
+    "shell_output",
+    "answer_questions",
+    "ask_user_question",
+    "get_skill",
+    "task_output",
+  ]);
+
   // Combine built-in tools with MCP tools
-  const allTools = [...registry.getAll(), ...mcpManager.getTools()].map((tool) => ({
+  const builtInTools = registry.getAll();
+  const mcpTools = mcpManager.getTools();
+  const builtInToolNames = new Set(builtInTools.map((tool) => tool.name));
+  const allTools = [...builtInTools, ...mcpTools].map((tool) => ({
     ...tool,
     execute: async (params: any): Promise<string> => {
+      if (planModeEnabled) {
+        const isBuiltIn = builtInToolNames.has(tool.name);
+        const isReadOnly = isBuiltIn && readOnlyBuiltInTools.has(tool.name);
+        if (!isReadOnly) {
+          return `Plan mode is enabled. Tool "${tool.name}" is blocked because it may modify state.`;
+        }
+      }
+
       const decision = permissionController.evaluate(tool.name, params);
       await permissionController.recordAudit(tool.name, params, decision);
       if (!decision.allowed) {
@@ -328,7 +359,7 @@ export async function createInteractiveRuntime(
     maxConcurrent: 2,
     maxDepth: 2,
   });
-  const taskManager = new TaskManager(subAgentManager);
+  const taskManager = new TaskManager(subAgentManager, sessionId);
 
   // Create agent
   const agent = new Agent({
@@ -360,6 +391,8 @@ export async function createInteractiveRuntime(
   slashRegistry.register(new SessionCommand());
   slashRegistry.register(new PermissionsCommand());
   slashRegistry.register(new TaskCommand());
+  slashRegistry.register(new PlanCommand());
+  slashRegistry.register(new ToolsCommand());
 
   async function runInput(
     input: string,
@@ -435,6 +468,22 @@ export async function createInteractiveRuntime(
       mcpManager,
       permissionController,
       taskManager,
+      isPlanModeEnabled: () => planModeEnabled,
+      setPlanModeEnabled: (enabled: boolean) => {
+        planModeEnabled = enabled;
+      },
+      toolsCatalog: [
+        ...builtInTools.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          source: "builtin" as const,
+        })),
+        ...mcpTools.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          source: "mcp" as const,
+        })),
+      ],
       registry: slashRegistry,
       cleanup: async () => {
         await mcpManager.close();
@@ -459,5 +508,9 @@ export async function createInteractiveRuntime(
     getStatusLine: () => statusLine,
     getSessionId: () => sessionId,
     getSlashRegistry: () => slashRegistry,
+    isPlanModeEnabled: () => planModeEnabled,
+    setPlanModeEnabled: (enabled: boolean) => {
+      planModeEnabled = enabled;
+    },
   };
 }
