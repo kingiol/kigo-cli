@@ -14753,7 +14753,7 @@ const DEFAULT_SKILLS_CONFIG = {
   userSkillsDir: "~/.kigo/skills"
 };
 const DEFAULT_TOOLS_CONFIG = {
-  loadPaths: [".kigo/tool", ".kigo/tools", ".opencode/tool", ".opencode/tools"],
+  loadPaths: [".kigo/tool", ".kigo/tools"],
   timeoutMs: 12e4,
   maxOutputChars: 12e3
 };

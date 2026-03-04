@@ -20,7 +20,7 @@ const DEFAULT_SKILLS_CONFIG = {
 } as const;
 
 const DEFAULT_TOOLS_CONFIG = {
-  loadPaths: ['.kigo/tool', '.kigo/tools', '.opencode/tool', '.opencode/tools'] as string[],
+  loadPaths: ['.kigo/tool', '.kigo/tools'] as string[],
   timeoutMs: 120000,
   maxOutputChars: 12000,
 };

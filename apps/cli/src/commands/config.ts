@@ -61,7 +61,7 @@ export function configCommands(program: Command): void {
         },
         plugins: [],
         tools: {
-          loadPaths: [".kigo/tool", ".kigo/tools", ".opencode/tool", ".opencode/tools"],
+          loadPaths: [".kigo/tool", ".kigo/tools"],
           timeoutMs: 120000,
           maxOutputChars: 12000,
         },

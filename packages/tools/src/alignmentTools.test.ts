@@ -20,7 +20,7 @@ afterEach(async () => {
   }
 });
 
-describe('OpenCode-aligned tools', () => {
+describe('Aligned tools', () => {
   it('apply_patch supports add/update/move operations', async () => {
     const dir = await createTempDir('kigo-apply-patch-');
     const fromPath = path.join(dir, 'from.txt');

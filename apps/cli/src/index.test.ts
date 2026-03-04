@@ -61,7 +61,7 @@ describe("@kingiol/kigo-cli", () => {
         },
       ],
       tools: {
-        loadPaths: [".kigo/tool", ".opencode/tools"],
+        loadPaths: [".kigo/tool", ".kigo/tools"],
         timeoutMs: 30000,
         maxOutputChars: 8000,
       },
