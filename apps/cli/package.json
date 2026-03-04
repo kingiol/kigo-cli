@@ -26,13 +26,11 @@
   "author": "Kingiol(kingxiaokang@gmail.com)",
   "type": "module",
   "bin": {
-    "kigo": "./bin/kigo.js"
+    "kigo": "bin/kigo.js"
   },
   "main": "./dist/index.cjs",
-  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
       "default": "./dist/index.cjs"
     }
   },
@@ -47,8 +45,7 @@
   },
   "files": [
     "bin/",
-    "dist/",
-    "README.md"
+    "dist/"
   ],
   "engines": {
     "node": ">=20.0.0"

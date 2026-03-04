@@ -16,6 +16,7 @@ export interface SubAgentProfile {
   blockedTools?: string[];
   maxTokens?: number;
   temperature?: number;
+  reasoningEffort?: string;
   maxRetries?: number;
   retryDelayMs?: number;
   timeoutMs?: number;
@@ -39,6 +40,7 @@ export interface SubAgentRunOptions {
   blockedTools?: string[];
   maxTokens?: number;
   temperature?: number;
+  reasoningEffort?: string;
   maxRetries?: number;
   retryDelayMs?: number;
   timeoutMs?: number;
@@ -92,6 +94,14 @@ class Semaphore {
     if (next) {
       next();
     }
+  }
+
+  stats(): { inflight: number; queued: number; maxConcurrent: number } {
+    return {
+      inflight: this.inflight,
+      queued: this.queue.length,
+      maxConcurrent: this.maxConcurrent,
+    };
   }
 }
 
@@ -150,6 +160,7 @@ export class SubAgentManager {
         blockedTools: this.mergeToolLists(profile?.blockedTools, options.blockedTools),
         maxTokens: options.maxTokens ?? profile?.maxTokens,
         temperature: options.temperature ?? profile?.temperature,
+        reasoningEffort: options.reasoningEffort ?? profile?.reasoningEffort,
         maxRetries: options.maxRetries ?? profile?.maxRetries,
         retryDelayMs: options.retryDelayMs ?? profile?.retryDelayMs,
         timeoutMs: options.timeoutMs ?? profile?.timeoutMs,
@@ -177,6 +188,7 @@ export class SubAgentManager {
         tools: selectedTools,
         maxTokens: mergedProfile.maxTokens,
         temperature: mergedProfile.temperature,
+        reasoningEffort: mergedProfile.reasoningEffort,
         maxRetries: mergedProfile.maxRetries,
         retryDelayMs: mergedProfile.retryDelayMs,
         timeoutMs: mergedProfile.timeoutMs,
@@ -229,6 +241,10 @@ export class SubAgentManager {
     } finally {
       this.semaphore.release();
     }
+  }
+
+  getStats(): { inflight: number; queued: number; maxConcurrent: number } {
+    return this.semaphore.stats();
   }
 
   private mergeToolLists(primary?: string[], secondary?: string[]): string[] | undefined {

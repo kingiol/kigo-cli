@@ -3,13 +3,16 @@
  */
 
 import type { Tool, StreamingEvent, Message } from '../types.js';
+import type { BaseProvider } from '../models/BaseProvider.js';
+import type { ProviderCapabilities } from '../models/BaseProvider.js';
 
 export interface AgentOptions {
-  provider: any;
+  provider: BaseProvider;
   systemPrompt: string;
   tools?: Tool[];
   maxTokens?: number;
   temperature?: number;
+  reasoningEffort?: string;
   sessionId?: string;
   subAgentDepth?: number;
   maxRetries?: number;
@@ -31,6 +34,7 @@ export class Agent {
   private messages: Message[] = [];
   private maxTokens: number;
   private temperature: number;
+  private reasoningEffort?: string;
   private subAgentDepth?: number;
   private maxRetries: number;
   private retryDelayMs: number;
@@ -44,6 +48,7 @@ export class Agent {
   constructor(private options: AgentOptions) {
     this.maxTokens = options.maxTokens || 4096;
     this.temperature = options.temperature || 0.7;
+    this.reasoningEffort = options.reasoningEffort;
     this.subAgentDepth = options.subAgentDepth;
     this.maxRetries = options.maxRetries ?? 2;
     this.retryDelayMs = options.retryDelayMs ?? 500;
@@ -173,22 +178,9 @@ export class Agent {
 
     while (attempt <= this.maxRetries) {
       try {
-        const responsePromise = this.options.provider.chat({
-          messages: fullMessages,
-          tools: Array.from(this.tools.values()).map(t => ({
-            type: 'function',
-            function: {
-              name: t.name,
-              description: t.description,
-              parameters: t.parameters,
-            },
-          })),
-          stream: true,
-          maxTokens: this.maxTokens,
-          temperature: this.temperature,
-          toolChoice: this.options.toolChoice,
-          responseFormat: this.options.responseFormat,
-        });
+        const responsePromise = this.options.provider.chat(
+          this.buildProviderPayload(fullMessages)
+        );
         if (this.timeoutMs > 0) {
           let timeoutId: NodeJS.Timeout | null = null;
           const timeoutPromise = new Promise<never>((_, reject) => {
@@ -216,6 +208,37 @@ export class Agent {
     }
 
     throw lastError || new Error('Failed to start stream');
+  }
+
+  private buildProviderPayload(fullMessages: Message[]) {
+    const capabilities: ProviderCapabilities = this.options.provider.getCapabilities?.() || {
+      tool_calling: true,
+      json_output: true,
+      reasoning_effort: false,
+      response_api_mode: 'unknown',
+    };
+
+    const payload = {
+      messages: fullMessages,
+      tools: capabilities.tool_calling
+        ? Array.from(this.tools.values()).map(t => ({
+          type: 'function',
+          function: {
+            name: t.name,
+            description: t.description,
+            parameters: t.parameters,
+          },
+        }))
+        : undefined,
+      stream: true,
+      maxTokens: this.maxTokens,
+      temperature: this.temperature,
+      toolChoice: capabilities.tool_calling ? this.options.toolChoice : undefined,
+      responseFormat: capabilities.json_output ? this.options.responseFormat : undefined,
+      reasoningEffort: capabilities.reasoning_effort ? this.reasoningEffort : undefined,
+    };
+
+    return payload;
   }
 
   private isToolAllowed(name: string): boolean {

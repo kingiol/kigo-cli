@@ -7,6 +7,7 @@ export class PlanCommand implements SlashCommand {
   async execute(args: string[], context: CommandContext): Promise<void> {
     const getState = context.isPlanModeEnabled;
     const setState = context.setPlanModeEnabled;
+    const setAgent = context.setActiveAgentId;
 
     if (!getState || !setState) {
       console.log("Plan mode runtime controls not available.");
@@ -21,12 +22,18 @@ export class PlanCommand implements SlashCommand {
     }
 
     if (action === "on" || action === "enter") {
+      if (setAgent) {
+        setAgent("plan");
+      }
       setState(true);
       console.log("Plan mode enabled. Only read-only tools are allowed.");
       return;
     }
 
     if (action === "off" || action === "exit") {
+      if (setAgent) {
+        setAgent("build");
+      }
       setState(false);
       console.log("Plan mode disabled. All permitted tools are available.");
       return;

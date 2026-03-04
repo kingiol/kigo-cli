@@ -16,6 +16,8 @@ export interface StreamingEvent {
     traceId: string;
     spanId: string;
     timestamp: number;
+    agentId?: string;
+    executionMode?: string;
   };
 }
 

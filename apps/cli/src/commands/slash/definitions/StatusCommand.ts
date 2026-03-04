@@ -12,10 +12,12 @@ export class StatusCommand implements SlashCommand {
         const modelName = context.configManager.getModelName();
         const provider = context.configManager.getProvider();
         const sessionId = context.session.getId();
+        const activeAgent = context.getActiveAgentId ? context.getActiveAgentId() : "build";
 
         console.log(`
 ${chalk.bold('Session Status:')}
   ID: ${sessionId}
+  Agent: ${activeAgent}
   Model: ${modelName}
   Provider: ${provider}
   Messages: ${context.agent.getMessages().length}

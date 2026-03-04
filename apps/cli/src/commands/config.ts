@@ -45,12 +45,25 @@ export function configCommands(program: Command): void {
       const manager = getConfigManager();
       await manager.save({
         model: { name: "gpt-4o", provider: "openai" },
+        providers: {
+          openai: {
+            model: "gpt-4o",
+            options: {},
+          },
+        },
+        agent: {},
         cli: { stream: true },
         mcpServers: [],
         skills: {
           enabled: true,
           projectSkillsDir: ".kigo/skills",
           userSkillsDir: "~/.kigo/skills",
+        },
+        plugins: [],
+        tools: {
+          loadPaths: [".kigo/tool", ".kigo/tools", ".opencode/tool", ".opencode/tools"],
+          timeoutMs: 120000,
+          maxOutputChars: 12000,
         },
         permissions: {
           allow: [],

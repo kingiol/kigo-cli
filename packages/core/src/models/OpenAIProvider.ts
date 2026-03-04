@@ -7,6 +7,7 @@ import {
   BaseProvider,
   type ChatOptions,
   type ChatResponse,
+  type ProviderCapabilities,
   type StreamChunk,
 } from './BaseProvider.js';
 
@@ -36,7 +37,7 @@ export class OpenAIProvider extends BaseProvider {
   async *chat(options: ChatOptions): AsyncIterable<StreamChunk> {
     const model = this.getModel(options);
 
-    const stream = await this.client.chat.completions.create({
+    const payload: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming = {
       model,
       messages: this.formatMessages(options.messages),
       tools: options.tools,
@@ -45,7 +46,12 @@ export class OpenAIProvider extends BaseProvider {
       max_tokens: options.maxTokens,
       temperature: options.temperature,
       response_format: options.responseFormat,
-    });
+    };
+    if (options.reasoningEffort) {
+      ((payload as unknown) as Record<string, unknown>).reasoning_effort = options.reasoningEffort;
+    }
+
+    const stream = await this.client.chat.completions.create(payload);
 
     for await (const chunk of stream) {
       const delta = chunk.choices[0]?.delta;
@@ -74,7 +80,7 @@ export class OpenAIProvider extends BaseProvider {
   async chatNonStream(options: ChatOptions): Promise<ChatResponse> {
     const model = this.getModel(options);
 
-    const response = await this.client.chat.completions.create({
+    const payload: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming = {
       model,
       messages: this.formatMessages(options.messages),
       tools: options.tools,
@@ -83,7 +89,12 @@ export class OpenAIProvider extends BaseProvider {
       max_tokens: options.maxTokens,
       temperature: options.temperature,
       response_format: options.responseFormat,
-    });
+    };
+    if (options.reasoningEffort) {
+      ((payload as unknown) as Record<string, unknown>).reasoning_effort = options.reasoningEffort;
+    }
+
+    const response = await this.client.chat.completions.create(payload);
 
     const choice = response.choices[0];
     return {
@@ -107,5 +118,14 @@ export class OpenAIProvider extends BaseProvider {
   private getModel(_options: ChatOptions): string {
     // Extract model from messages if present (for tool calls)
     return this.defaultModel;
+  }
+
+  getCapabilities(): ProviderCapabilities {
+    return {
+      tool_calling: true,
+      json_output: true,
+      reasoning_effort: true,
+      response_api_mode: 'chat_completions',
+    };
   }
 }

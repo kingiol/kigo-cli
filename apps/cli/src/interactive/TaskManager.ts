@@ -15,8 +15,13 @@ export type TaskStatus = "running" | "completed" | "failed";
 export interface TaskRecord {
   id: string;
   profile: TaskProfile;
+  agentType: TaskProfile;
   task: string;
   status: TaskStatus;
+  parentSessionId: string;
+  attempt: number;
+  startedAt?: number;
+  lastErrorCode?: string;
   createdAt: number;
   completedAt?: number;
   output?: string;
@@ -49,10 +54,11 @@ function getTaskFilePath(sessionId: string): string {
 export class TaskManager {
   private tasks = new Map<string, TaskRecord>();
   private taskFilePath: string;
+  private active = new Set<string>();
 
   constructor(
     private readonly subAgentManager: SubAgentManager,
-    sessionId: string,
+    private readonly sessionId: string,
   ) {
     this.taskFilePath = getTaskFilePath(sessionId);
     this.loadFromDisk();
@@ -87,17 +93,23 @@ export class TaskManager {
       return;
     }
 
+    task.startedAt = Date.now();
+    this.active.add(id);
     try {
       const result = await this.subAgentManager.runSubAgent(options);
       task.status = "completed";
       task.output = result.output;
       task.completedAt = Date.now();
+      task.lastErrorCode = undefined;
       this.saveToDisk();
     } catch (error) {
       task.status = "failed";
       task.error = error instanceof Error ? error.message : String(error);
       task.completedAt = Date.now();
+      task.lastErrorCode = "SUB_AGENT_EXECUTION_FAILED";
       this.saveToDisk();
+    } finally {
+      this.active.delete(id);
     }
   }
 
@@ -113,8 +125,11 @@ export class TaskManager {
     const record: TaskRecord = {
       id,
       profile,
+      agentType: profile,
       task: options.task,
       status: "running",
+      parentSessionId: this.sessionId,
+      attempt: 1,
       createdAt: Date.now(),
     };
 
@@ -156,7 +171,19 @@ export class TaskManager {
       profile: existing.profile,
       runInBackground: false,
     });
+    resumed.parentSessionId = existing.parentSessionId;
+    resumed.attempt = existing.attempt + 1;
+    this.saveToDisk();
 
     return resumed;
+  }
+
+  getStats(): { running: number; total: number; queue: number } {
+    const managerStats = this.subAgentManager.getStats();
+    return {
+      running: this.active.size,
+      total: this.tasks.size,
+      queue: managerStats.queued,
+    };
   }
 }

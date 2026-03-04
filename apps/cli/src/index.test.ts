@@ -40,4 +40,35 @@ describe("@kingiol/kigo-cli", () => {
     expect(parsed.permissions.block).toEqual(["Bash(rm -rf *)"]);
     expect(parsed.permissions.dontAsk).toBe(true);
   });
+
+  it("should support new providers/plugins/tools config fields", () => {
+    const parsed = config.KigoConfigSchema.parse({
+      model: { name: "gpt-4o", provider: "openai" },
+      providers: {
+        openai: {
+          model: "gpt-4o",
+          baseUrl: "https://api.openai.com/v1",
+          options: {},
+        },
+      },
+      plugins: [
+        {
+          name: "local-dev-plugin",
+          source: "file",
+          spec: "./.kigo/plugins/dev-plugin.ts",
+          enabled: true,
+          options: {},
+        },
+      ],
+      tools: {
+        loadPaths: [".kigo/tool", ".opencode/tools"],
+        timeoutMs: 30000,
+        maxOutputChars: 8000,
+      },
+    });
+
+    expect(parsed.providers.openai?.model).toBe("gpt-4o");
+    expect(parsed.plugins.length).toBe(1);
+    expect(parsed.tools.timeoutMs).toBe(30000);
+  });
 });

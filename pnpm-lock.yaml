@@ -38,6 +38,9 @@ importers:
 
   apps/cli:
     dependencies:
+      '@kigo/plugin':
+        specifier: workspace:*
+        version: link:../../packages/plugin
       better-sqlite3:
         specifier: ^12.6.2
         version: 12.6.2
@@ -252,6 +255,19 @@ importers:
       '@types/eventsource':
         specifier: ^1.1.15
         version: 1.1.15
+      '@types/node':
+        specifier: ^20.11.0
+        version: 20.19.27
+
+  packages/plugin:
+    dependencies:
+      zod:
+        specifier: ^3.22.4
+        version: 3.25.76
+      zod-to-json-schema:
+        specifier: ^3.25.1
+        version: 3.25.1(zod@3.25.76)
+    devDependencies:
       '@types/node':
         specifier: ^20.11.0
         version: 20.19.27

@@ -7,6 +7,7 @@ import {
   BaseProvider,
   type ChatOptions,
   type ChatResponse,
+  type ProviderCapabilities,
   type StreamChunk,
 } from './BaseProvider.js';
 import type { Message } from '../types.js';
@@ -213,5 +214,14 @@ export class AnthropicProvider extends BaseProvider {
     }
 
     return { system, messages: formatted };
+  }
+
+  getCapabilities(): ProviderCapabilities {
+    return {
+      tool_calling: true,
+      json_output: false,
+      reasoning_effort: false,
+      response_api_mode: 'anthropic_messages',
+    };
   }
 }

@@ -9,6 +9,8 @@ export interface SchedulerOptions {
   sessionId?: string;
   streaming?: boolean;
   hooks?: Hook[];
+  getActiveAgentId?: () => string;
+  getExecutionMode?: () => string;
 }
 
 export interface Hook {
@@ -23,11 +25,15 @@ export class AgentScheduler {
   private agent: Agent;
   private hooks: Hook[] = [];
   private sessionId: string;
+  private getActiveAgentId?: () => string;
+  private getExecutionMode?: () => string;
 
   constructor(agent: Agent, options: SchedulerOptions = {}) {
     this.agent = agent;
     this.hooks = options.hooks || [];
     this.sessionId = options.sessionId || this.generateSessionId();
+    this.getActiveAgentId = options.getActiveAgentId;
+    this.getExecutionMode = options.getExecutionMode;
   }
 
   private generateSessionId(): string {
@@ -62,6 +68,8 @@ export class AgentScheduler {
             traceId,
             spanId: `span_${spanCounter++}`,
             timestamp: Date.now(),
+            agentId: this.getActiveAgentId?.(),
+            executionMode: this.getExecutionMode?.(),
           },
         };
         events.push(enrichedEvent);

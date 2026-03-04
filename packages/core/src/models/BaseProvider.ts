@@ -31,9 +31,17 @@ export interface StreamChunk {
   usage?: Usage;
 }
 
+export interface ProviderCapabilities {
+  tool_calling: boolean;
+  json_output: boolean;
+  reasoning_effort: boolean;
+  response_api_mode: 'chat_completions' | 'responses' | 'anthropic_messages' | 'unknown';
+}
+
 export abstract class BaseProvider {
   abstract chat(options: ChatOptions): AsyncIterable<StreamChunk>;
   abstract chatNonStream(options: ChatOptions): Promise<ChatResponse>;
+  getCapabilities?(_model?: string): ProviderCapabilities;
 
   protected formatMessages(messages: Message[]): any[] {
     return messages.map(m => ({

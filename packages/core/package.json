@@ -21,6 +21,14 @@
       "types": "./dist/agent/Scheduler.d.ts",
       "default": "./dist/agent/Scheduler.js"
     },
+    "./agent/AgentRegistry.js": {
+      "types": "./dist/agent/AgentRegistry.d.ts",
+      "default": "./dist/agent/AgentRegistry.js"
+    },
+    "./agent/ExecutionMode.js": {
+      "types": "./dist/agent/ExecutionMode.d.ts",
+      "default": "./dist/agent/ExecutionMode.js"
+    },
     "./session/Session.js": {
       "types": "./dist/session/Session.d.ts",
       "default": "./dist/session/Session.js"
@@ -28,6 +36,10 @@
     "./models/ProviderFactory.js": {
       "types": "./dist/models/ProviderFactory.d.ts",
       "default": "./dist/models/ProviderFactory.js"
+    },
+    "./models/ProviderRegistry.js": {
+      "types": "./dist/models/ProviderRegistry.d.ts",
+      "default": "./dist/models/ProviderRegistry.js"
     }
   },
   "scripts": {

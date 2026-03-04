@@ -3,9 +3,16 @@
  */
 
 import chalk from "chalk";
-import { Agent, AgentScheduler, Session, ProviderFactory } from "@kigo/core";
+import {
+  Agent,
+  AgentRegistry,
+  AgentScheduler,
+  ExecutionModeController,
+  ProviderFactory,
+  Session,
+} from "@kigo/core";
 import { getConfigManager } from "../config/ConfigManager.js";
-import { SubAgentRuntime, registry, SkillLoader } from "@kigo/tools";
+import { SubAgentRuntime, registry, SkillLoader, type Tool as RuntimeTool } from "@kigo/tools";
 import { MCPManager } from "@kigo/mcp";
 import { StatusLine } from "../display/StatusLine.js";
 import { SlashCommandRegistry } from "../commands/slash/Registry.js";
@@ -19,8 +26,10 @@ import { PermissionsCommand } from "../commands/slash/definitions/PermissionsCom
 import { TaskCommand } from "../commands/slash/definitions/TaskCommand.js";
 import { PlanCommand } from "../commands/slash/definitions/PlanCommand.js";
 import { ToolsCommand } from "../commands/slash/definitions/ToolsCommand.js";
+import { AgentCommand } from "../commands/slash/definitions/AgentCommand.js";
 import { PermissionController } from "./PermissionController.js";
 import { TaskManager } from "./TaskManager.js";
+import { PluginManager, type LoadedExternalTool, type PluginExecutionContext } from "@kigo/plugin";
 
 export interface InteractiveOptions {
   session?: string;
@@ -197,6 +206,51 @@ export function parseAnswerQuestionsPayload(
   return null;
 }
 
+function truncateOutput(output: string, maxChars: number): string {
+  if (output.length <= maxChars) {
+    return output;
+  }
+  return `${output.slice(0, maxChars)}\n\n[output truncated at ${maxChars} chars]`;
+}
+
+async function runWithTimeout<T>(task: Promise<T>, timeoutMs?: number): Promise<T> {
+  if (!timeoutMs || timeoutMs <= 0) {
+    return task;
+  }
+
+  let timer: NodeJS.Timeout | null = null;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Tool execution timed out after ${timeoutMs}ms`)), timeoutMs);
+  });
+  try {
+    return (await Promise.race([task, timeout])) as T;
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
+function wrapExternalTool(
+  tool: LoadedExternalTool,
+  context: PluginExecutionContext,
+  defaultTimeoutMs: number,
+  maxOutputChars: number,
+): RuntimeTool {
+  return {
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.parameters,
+    execute: async (params: unknown): Promise<string> => {
+      const result = await runWithTimeout(
+        tool.execute(params, context),
+        tool.timeoutMs || defaultTimeoutMs,
+      );
+      return truncateOutput(result, maxOutputChars);
+    },
+  };
+}
+
 export type InteractiveRuntime = {
   runInput: (input: string, onEvent: (event: RuntimeEvent) => void) => Promise<void>;
   handleSlashCommand: (input: string, extraCleanup?: () => Promise<void>) => Promise<void>;
@@ -214,6 +268,7 @@ export async function createInteractiveRuntime(
 ): Promise<InteractiveRuntime> {
   const loadedConfig = await configManager.load();
   const permissionController = new PermissionController(loadedConfig.permissions);
+  registry.clearBySource(["local", "plugin"]);
 
   // Load skills metadata
   const skillLoader = new SkillLoader();
@@ -268,14 +323,12 @@ export async function createInteractiveRuntime(
     systemPrompt = systemPrompt.replace("{MCP_TOOLS_INFO}", "");
   }
 
-  // Get model configuration
-  const modelName = configManager.getModelName(options.model);
-  const provider = configManager.getProvider();
-  const apiKey = configManager.getApiKey();
-  const baseUrl = configManager.getBaseUrl();
-  const azureApiVersion = configManager.getAzureApiVersion();
+  const toolsConfig = configManager.getToolsConfig();
+  const providerConfig = configManager.getProviderConfig();
+  const provider = providerConfig.provider;
+  const modelName = options.model || providerConfig.model || configManager.getModelName();
 
-  if (!apiKey && provider !== "ollama") {
+  if (!providerConfig.apiKey && provider !== "ollama") {
     console.error(
       chalk.red(
         `No API key found for provider "${provider}". Please set an API key environment variable or config.`
@@ -287,10 +340,10 @@ export async function createInteractiveRuntime(
   // Create provider
   const llmProvider = ProviderFactory.create({
     provider,
-    apiKey,
-    baseURL: baseUrl,
+    apiKey: providerConfig.apiKey,
+    baseURL: providerConfig.baseURL,
     model: modelName,
-    azureApiVersion,
+    azureApiVersion: providerConfig.azureApiVersion,
   });
 
   // Create session
@@ -298,40 +351,58 @@ export async function createInteractiveRuntime(
   const sessionId = session.getId();
   const sessionHistory = await session.getMessages();
 
+  const pluginManager = new PluginManager(process.cwd());
+
+  const pluginContext: PluginExecutionContext = {
+    cwd: process.cwd(),
+    sessionId,
+    env: process.env,
+  };
+
+  const localTools = await pluginManager.loadLocalTools(configManager.getToolLoadPaths());
+  for (const localTool of localTools) {
+    registry.registerExternal(
+      wrapExternalTool(localTool, pluginContext, toolsConfig.timeoutMs, toolsConfig.maxOutputChars),
+      "local",
+      localTool.origin,
+    );
+  }
+
+  const loadedPlugins = await pluginManager.loadPlugins(configManager.getPlugins());
+  for (const pluginTool of loadedPlugins.tools) {
+    registry.registerExternal(
+      wrapExternalTool(pluginTool, pluginContext, toolsConfig.timeoutMs, toolsConfig.maxOutputChars),
+      "plugin",
+      pluginTool.origin,
+    );
+  }
+
+  if (localTools.length > 0 || loadedPlugins.tools.length > 0) {
+    console.log(
+      chalk.dim(
+        `Extensions: local tools ${localTools.length}, plugin tools ${loadedPlugins.tools.length}`
+      )
+    );
+  }
+
   const subAgentRuntime = new SubAgentRuntime({
     allowNestedDefault: false,
     getSessionId: () => sessionId,
   });
 
-  let planModeEnabled = false;
-  const readOnlyBuiltInTools = new Set<string>([
-    "read_file",
-    "list_directory",
-    "glob_search",
-    "grep_search",
-    "web_search",
-    "web_fetch",
-    "todo_read",
-    "shell_output",
-    "answer_questions",
-    "ask_user_question",
-    "get_skill",
-    "task_output",
-  ]);
+  const agentRegistry = new AgentRegistry(configManager.getAgentOverrides());
+  const executionMode = new ExecutionModeController(agentRegistry, "build");
 
-  // Combine built-in tools with MCP tools
   const builtInTools = registry.getAll();
+  const toolsCatalog = registry.getCatalog();
   const mcpTools = mcpManager.getTools();
-  const builtInToolNames = new Set(builtInTools.map((tool) => tool.name));
-  const allTools = [...builtInTools, ...mcpTools].map((tool) => ({
+
+  const createGuardedTool = (tool: RuntimeTool): RuntimeTool => ({
     ...tool,
     execute: async (params: any): Promise<string> => {
-      if (planModeEnabled) {
-        const isBuiltIn = builtInToolNames.has(tool.name);
-        const isReadOnly = isBuiltIn && readOnlyBuiltInTools.has(tool.name);
-        if (!isReadOnly) {
-          return `Plan mode is enabled. Tool "${tool.name}" is blocked because it may modify state.`;
-        }
+      const modeDecision = executionMode.evaluateTool(tool.name);
+      if (!modeDecision.allowed) {
+        return `Tool blocked by active agent (${executionMode.getActiveAgentId()}): ${tool.name}`;
       }
 
       const decision = permissionController.evaluate(tool.name, params);
@@ -339,9 +410,16 @@ export async function createInteractiveRuntime(
       if (!decision.allowed) {
         return `Permission denied for ${tool.name}: ${decision.reason}`;
       }
-      return tool.execute(params);
+
+      const result = await runWithTimeout(
+        Promise.resolve(tool.execute(params)),
+        toolsConfig.timeoutMs,
+      );
+      return truncateOutput(result, toolsConfig.maxOutputChars);
     },
-  }));
+  });
+
+  const allTools = [...builtInTools.map(createGuardedTool), ...mcpTools.map(createGuardedTool)];
 
   const subAgentManager = subAgentRuntime.createManager(sessionId, {
     tools: allTools,
@@ -349,10 +427,10 @@ export async function createInteractiveRuntime(
     providerFactory: (profile) =>
       ProviderFactory.create({
         provider,
-        apiKey,
-        baseURL: baseUrl,
+        apiKey: providerConfig.apiKey,
+        baseURL: providerConfig.baseURL,
         model: profile.model || modelName,
-        azureApiVersion,
+        azureApiVersion: providerConfig.azureApiVersion,
       }),
     defaultSystemPrompt:
       "You are a specialized sub-agent. Be concise and return only what was asked.",
@@ -366,6 +444,7 @@ export async function createInteractiveRuntime(
     provider: llmProvider,
     systemPrompt,
     tools: allTools,
+    reasoningEffort: providerConfig.reasoningEffort,
     sessionId,
   });
   if (sessionHistory.length > 0) {
@@ -377,6 +456,8 @@ export async function createInteractiveRuntime(
   const scheduler = new AgentScheduler(agent, {
     sessionId,
     streaming: options.stream !== false,
+    getActiveAgentId: () => executionMode.getActiveAgentId(),
+    getExecutionMode: () => executionMode.getActiveAgentId(),
   });
 
   const statusLine = new StatusLine(sessionId, modelName);
@@ -392,6 +473,7 @@ export async function createInteractiveRuntime(
   slashRegistry.register(new PermissionsCommand());
   slashRegistry.register(new TaskCommand());
   slashRegistry.register(new PlanCommand());
+  slashRegistry.register(new AgentCommand());
   slashRegistry.register(new ToolsCommand());
 
   async function runInput(
@@ -468,15 +550,17 @@ export async function createInteractiveRuntime(
       mcpManager,
       permissionController,
       taskManager,
-      isPlanModeEnabled: () => planModeEnabled,
+      isPlanModeEnabled: () => executionMode.isPlanMode(),
       setPlanModeEnabled: (enabled: boolean) => {
-        planModeEnabled = enabled;
+        executionMode.setActiveAgent(enabled ? "plan" : "build");
       },
+      getActiveAgentId: () => executionMode.getActiveAgentId(),
+      setActiveAgentId: (id: string) => executionMode.setActiveAgent(id),
       toolsCatalog: [
-        ...builtInTools.map((tool) => ({
+        ...toolsCatalog.map((tool) => ({
           name: tool.name,
           description: tool.description,
-          source: "builtin" as const,
+          source: tool.source,
         })),
         ...mcpTools.map((tool) => ({
           name: tool.name,
@@ -508,9 +592,9 @@ export async function createInteractiveRuntime(
     getStatusLine: () => statusLine,
     getSessionId: () => sessionId,
     getSlashRegistry: () => slashRegistry,
-    isPlanModeEnabled: () => planModeEnabled,
+    isPlanModeEnabled: () => executionMode.isPlanMode(),
     setPlanModeEnabled: (enabled: boolean) => {
-      planModeEnabled = enabled;
+      executionMode.setActiveAgent(enabled ? "plan" : "build");
     },
   };
 }

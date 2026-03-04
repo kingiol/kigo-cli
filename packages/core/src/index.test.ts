@@ -12,6 +12,7 @@ describe('@kigo/core', () => {
     it('should export provider classes', () => {
         expect(core.OpenAIProvider).toBeDefined();
         expect(core.ProviderFactory).toBeDefined();
+        expect(core.ProviderRegistry).toBeDefined();
     });
 
     it('should run a sub-agent task', async () => {

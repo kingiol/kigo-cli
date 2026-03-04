@@ -5,7 +5,7 @@
 import { Command } from "commander";
 import * as yaml from "js-yaml";
 import { getConfigManager } from "../config/ConfigManager.js";
-import type { MCPServerConfig } from "../config/configSchema.js";
+import type { MCPServerConfig } from "@kigo/config";
 
 export function mcpCommands(program: Command): void {
   const mcpCmd = program.command("mcp").description("Manage MCP servers");

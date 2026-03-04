@@ -31,9 +31,9 @@ export class ToolRenderer {
 
         outputStr = this.truncateOutput(outputStr, name);
 
-        // Colorize diffs for write_file
+        // Colorize diff-like output
         let formattedOutput = outputStr;
-        if (name === 'write_file' || name === 'edit_file') {
+        if (name === 'write_file' || name === 'edit_file' || name === 'apply_patch') {
             formattedOutput = outputStr.split('\n').map(line => {
                 if (line.startsWith('+')) return chalk.green(line);
                 if (line.startsWith('-')) return chalk.red(line);
@@ -76,7 +76,10 @@ export class ToolRenderer {
     }
 
     private static truncateOutput(outputStr: string, name: string): string {
-        const isDiffLike = name === 'write_file' || name === 'edit_file';
+        const isDiffLike =
+            name === 'write_file' ||
+            name === 'edit_file' ||
+            name === 'apply_patch';
         const maxLines = isDiffLike ? this.DIFF_OUTPUT_LINES : this.MAX_OUTPUT_LINES;
         const maxChars = isDiffLike ? this.DIFF_OUTPUT_CHARS : this.MAX_OUTPUT_CHARS;
         let lines = outputStr.split('\n');

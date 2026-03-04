@@ -13,6 +13,10 @@ describe('@kigo/tools', () => {
         expect(tools.registry.get('write_file')).toBeDefined();
         expect(tools.registry.get('list_directory')).toBeDefined();
         expect(tools.registry.get('glob_search')).toBeDefined();
+        expect(tools.registry.get('apply_patch')).toBeDefined();
+        expect(tools.registry.get('multiedit')).toBeDefined();
+        expect(tools.registry.get('codesearch')).toBeDefined();
+        expect(tools.registry.get('batch')).toBeDefined();
         expect(tools.registry.get('answer_questions')).toBeDefined();
         expect(tools.registry.get('ask_user_question')).toBeDefined();
         expect(tools.registry.get('task_output')).toBeDefined();
@@ -23,5 +27,9 @@ describe('@kigo/tools', () => {
         expect(tools.writeFileSchema).toBeDefined();
         expect(tools.listDirectorySchema).toBeDefined();
         expect(tools.globSearchSchema).toBeDefined();
+        expect(tools.applyPatchSchema).toBeDefined();
+        expect(tools.multiEditSchema).toBeDefined();
+        expect(tools.codeSearchSchema).toBeDefined();
+        expect(tools.batchSchema).toBeDefined();
     });
 });

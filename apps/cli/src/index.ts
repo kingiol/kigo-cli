@@ -6,11 +6,14 @@
 import { Command } from 'commander';
 import { getConfigManager } from './config/ConfigManager.js';
 import { runInteractiveWithUI } from './ui/index.js';
+import { createInteractiveRuntime } from './interactive/runtime.js';
 import { configCommands } from './commands/config.js';
 import { authCommands } from './commands/auth.js';
 import { mcpCommands } from './commands/mcp.js';
 import { lspCommands } from './commands/lsp.js';
 import { permissionsCommands } from './commands/permissions.js';
+import { pluginCommands } from './commands/plugin.js';
+import { doctorCommands } from './commands/doctor.js';
 import { readFileSync } from 'fs';
 
 const program = new Command();
@@ -38,10 +41,56 @@ program
     await configManager.load();
 
     if (prompt && prompt.length > 0) {
-      // Single prompt mode
       const fullPrompt = prompt.join(' ');
-      console.log('Single prompt mode:', fullPrompt);
-      // TODO: Implement single prompt execution
+      const runtime = await createInteractiveRuntime(configManager, {
+        ...options,
+        version: pkg.version,
+      });
+      let pendingLine = '';
+
+      try {
+        await runtime.runInput(fullPrompt, (event) => {
+          if (event.type === 'text_delta') {
+            pendingLine += event.data;
+            process.stdout.write(event.data);
+            return;
+          }
+
+          if (event.type === 'tool_call') {
+            if (pendingLine.length > 0) {
+              process.stdout.write('\n');
+              pendingLine = '';
+            }
+            process.stdout.write(`\n[tool] ${event.toolName || event.data?.name || 'unknown'}\n`);
+            return;
+          }
+
+          if (event.type === 'tool_output') {
+            if (pendingLine.length > 0) {
+              process.stdout.write('\n');
+              pendingLine = '';
+            }
+            const payload = event.data?.error ? `Error: ${event.data.error}` : (event.data?.result || '');
+            if (payload) {
+              process.stdout.write(`${payload}\n`);
+            }
+            return;
+          }
+
+          if (event.type === 'error') {
+            if (pendingLine.length > 0) {
+              process.stdout.write('\n');
+              pendingLine = '';
+            }
+            process.stderr.write(`Error: ${event.data}\n`);
+          }
+        });
+        if (pendingLine.length > 0) {
+          process.stdout.write('\n');
+        }
+      } finally {
+        await runtime.close();
+      }
     } else {
       // Interactive mode
       await runInteractiveWithUI(configManager, {
@@ -57,5 +106,7 @@ authCommands(program);
 mcpCommands(program);
 lspCommands(program);
 permissionsCommands(program);
+pluginCommands(program);
+doctorCommands(program);
 
 program.parse();

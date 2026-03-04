@@ -11,6 +11,8 @@ import {
   DEFAULT_CONFIG,
   type KigoConfig,
   type MCPServerConfig,
+  type PluginConfig,
+  type ToolsConfig,
 } from './configSchema.js';
 
 const DEFAULT_CONFIG_PATH = path.join(os.homedir(), '.kigo', 'config.yaml');
@@ -33,24 +35,87 @@ export class ConfigManager {
     } catch {
       // File doesn't exist, use default
       if (!this.config) {
-        this.config = DEFAULT_CONFIG;
+        this.config = this.buildDefaultConfig();
       }
     }
 
     return this.config!;
   }
 
+  private buildDefaultConfig(): KigoConfig {
+    return {
+      ...DEFAULT_CONFIG,
+      model: { ...DEFAULT_CONFIG.model },
+      cli: { ...DEFAULT_CONFIG.cli },
+      providers: { ...(DEFAULT_CONFIG.providers || {}) },
+      agent: { ...(DEFAULT_CONFIG.agent || {}) },
+      mcpServers: [...(DEFAULT_CONFIG.mcpServers || [])],
+      skills: { ...DEFAULT_CONFIG.skills },
+      plugins: [...(DEFAULT_CONFIG.plugins || [])],
+      tools: { ...DEFAULT_CONFIG.tools },
+      permissions: { ...DEFAULT_CONFIG.permissions },
+    };
+  }
+
+  private normalizeConfig(raw: any): any {
+    if (!raw || typeof raw !== 'object') {
+      return this.buildDefaultConfig();
+    }
+
+    const normalized = { ...raw };
+    normalized.providers = normalized.providers || {};
+    normalized.agent = normalized.agent || {};
+    normalized.plugins = normalized.plugins || [];
+    normalized.tools = normalized.tools || {};
+
+    const modelProvider = normalized.model?.provider;
+    const providerModel = normalized.model?.name;
+    const providerApiKey = normalized.model?.apiKey;
+    const providerBaseUrl = normalized.model?.baseUrl;
+    const providerAzureApiVersion = normalized.model?.azureApiVersion;
+    const providerReasoningEffort = normalized.model?.reasoningEffort;
+
+    if (modelProvider) {
+      const existing = normalized.providers[modelProvider] || {};
+      normalized.providers[modelProvider] = {
+        ...existing,
+        apiKey: existing.apiKey ?? providerApiKey,
+        baseUrl: existing.baseUrl ?? providerBaseUrl,
+        model: existing.model ?? providerModel,
+        azureApiVersion: existing.azureApiVersion ?? providerAzureApiVersion,
+        reasoningEffort: existing.reasoningEffort ?? providerReasoningEffort,
+        options: existing.options || {},
+      };
+    }
+
+    normalized.plugins = normalized.plugins.map((entry: unknown) => {
+      if (typeof entry === 'string') {
+        const name = entry.includes('/') ? entry.split('/').pop() || entry : entry;
+        return {
+          name,
+          source: 'npm',
+          spec: entry,
+          enabled: true,
+          options: {},
+        };
+      }
+      return entry;
+    });
+
+    return normalized;
+  }
+
   private async reload(): Promise<void> {
     try {
       const content = await fs.readFile(this.configPath, 'utf-8');
       const parsed = yaml.load(content) as any;
-      this.config = KigoConfigSchema.parse(parsed);
+      this.config = KigoConfigSchema.parse(this.normalizeConfig(parsed));
       this.lastModified = (await fs.stat(this.configPath)).mtimeMs;
     } catch (error) {
       if ((error as any).code !== 'ENOENT') {
         console.warn(`Failed to load config from ${this.configPath}: ${error}`);
       }
-      this.config = DEFAULT_CONFIG;
+      this.config = this.buildDefaultConfig();
     }
   }
 
@@ -59,7 +124,7 @@ export class ConfigManager {
     await fs.mkdir(dir, { recursive: true });
 
     // Validate before saving
-    const validated = KigoConfigSchema.parse(config);
+    const validated = KigoConfigSchema.parse(this.normalizeConfig(config));
 
     const content = yaml.dump(validated, { indent: 2, lineWidth: 120 });
     await fs.writeFile(this.configPath, content, 'utf-8');
@@ -92,7 +157,9 @@ export class ConfigManager {
 
   getModelName(cliModel?: string): string {
     const envModel = process.env.KIGO_MODEL;
-    return cliModel || envModel || this.config?.model.name || 'gpt-4o';
+    const provider = this.getProvider();
+    const providerModel = this.config?.providers?.[provider]?.model;
+    return cliModel || envModel || providerModel || this.config?.model.name || 'gpt-4o';
   }
 
   getProvider(): string {
@@ -105,6 +172,29 @@ export class ConfigManager {
     }
 
     return this.config?.model.provider || 'openai';
+  }
+
+  getProviderEntry(provider?: string): Record<string, any> {
+    const currentProvider = provider || this.getProvider();
+    const direct = this.config?.providers?.[currentProvider];
+    if (direct) {
+      return direct;
+    }
+    const openAICompatibleAliases = new Set([
+      'openrouter',
+      'together_ai',
+      'deepinfra',
+      'groq',
+      'mistral',
+      'perplexity',
+      'fireworks_ai',
+      'cloudflare',
+      'ollama',
+    ]);
+    if (openAICompatibleAliases.has(currentProvider)) {
+      return this.config?.providers?.['openai-compatible'] || {};
+    }
+    return {};
   }
 
   getBaseModel(): string {
@@ -138,6 +228,8 @@ export class ConfigManager {
       perplexity: 'PERPLEXITYAI_API_KEY',
       fireworks_ai: 'FIREWORKS_AI_API_KEY',
       cloudflare: 'CLOUDFLARE_API_KEY',
+      ollama: '',
+      'openai-compatible': '',
     };
 
     const envVar = envVarMap[provider];
@@ -145,6 +237,10 @@ export class ConfigManager {
       return process.env[envVar];
     }
 
+    const providerEntry = this.getProviderEntry(provider);
+    if (providerEntry.apiKey) {
+      return providerEntry.apiKey;
+    }
     return this.config?.model.apiKey;
   }
 
@@ -164,6 +260,7 @@ export class ConfigManager {
       fireworks_ai: 'FIREWORKS_AI_BASE_URL',
       cloudflare: 'CLOUDFLARE_BASE_URL',
       ollama: 'OLLAMA_BASE_URL',
+      'openai-compatible': '',
     };
 
     const envVar = envVarMap[provider];
@@ -171,17 +268,104 @@ export class ConfigManager {
       return process.env[envVar];
     }
 
+    const providerEntry = this.getProviderEntry(provider);
+    if (providerEntry.baseUrl) {
+      return providerEntry.baseUrl;
+    }
     return this.config?.model.baseUrl;
   }
 
   getAzureApiVersion(): string | undefined {
     const envVersion = process.env.AZURE_API_VERSION;
-    return envVersion || this.config?.model.azureApiVersion;
+    return envVersion || this.getProviderEntry('azure').azureApiVersion || this.config?.model.azureApiVersion;
   }
 
   getReasoningEffort(): string | undefined {
     const envEffort = process.env.KIGO_REASONING_EFFORT;
-    return envEffort || this.config?.model.reasoningEffort;
+    const provider = this.getProvider();
+    return envEffort || this.getProviderEntry(provider).reasoningEffort || this.config?.model.reasoningEffort;
+  }
+
+  getProviderConfig(provider?: string): {
+    provider: string;
+    apiKey?: string;
+    baseURL?: string;
+    model?: string;
+    azureApiVersion?: string;
+    reasoningEffort?: string;
+  } {
+    const effectiveProvider = provider || this.getProvider();
+    const entry = this.getProviderEntry(effectiveProvider);
+    return {
+      provider: effectiveProvider,
+      apiKey: this.getApiKey(),
+      baseURL: this.getBaseUrl(),
+      model: entry.model || this.getBaseModel(),
+      azureApiVersion: this.getAzureApiVersion(),
+      reasoningEffort: this.getReasoningEffort(),
+    };
+  }
+
+  getAgentOverrides(): Record<string, any> {
+    return this.config?.agent || {};
+  }
+
+  getToolsConfig(): ToolsConfig {
+    return this.config?.tools || DEFAULT_CONFIG.tools;
+  }
+
+  getToolLoadPaths(): string[] {
+    return this.getToolsConfig().loadPaths || DEFAULT_CONFIG.tools.loadPaths;
+  }
+
+  getPlugins(): PluginConfig[] {
+    const plugins = this.config?.plugins || [];
+    const normalized: PluginConfig[] = [];
+    for (const plugin of plugins) {
+      if (typeof plugin === 'string') {
+        normalized.push({
+          name: plugin.includes('/') ? plugin.split('/').pop() || plugin : plugin,
+          source: 'npm',
+          spec: plugin,
+          enabled: true,
+          options: {},
+        });
+        continue;
+      }
+      normalized.push({
+        name: plugin.name,
+        source: plugin.source || 'npm',
+        spec: plugin.spec,
+        enabled: plugin.enabled ?? true,
+        options: plugin.options || {},
+      });
+    }
+    return normalized;
+  }
+
+  async addPlugin(plugin: PluginConfig): Promise<void> {
+    await this.load();
+    const plugins = this.getPlugins();
+    const idx = plugins.findIndex((entry) => entry.name === plugin.name);
+    if (idx >= 0) {
+      plugins[idx] = plugin;
+    } else {
+      plugins.push(plugin);
+    }
+    this.config!.plugins = plugins;
+    await this.save(this.config!);
+  }
+
+  async removePlugin(name: string): Promise<boolean> {
+    await this.load();
+    const plugins = this.getPlugins();
+    const next = plugins.filter((entry) => entry.name !== name && entry.spec !== name);
+    if (next.length === plugins.length) {
+      return false;
+    }
+    this.config!.plugins = next;
+    await this.save(this.config!);
+    return true;
   }
 
   async getMCPServers(): Promise<MCPServerConfig[]> {

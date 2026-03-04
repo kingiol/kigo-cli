@@ -16,7 +16,9 @@ export interface CommandContext {
     taskManager?: TaskManager;
     isPlanModeEnabled?: () => boolean;
     setPlanModeEnabled?: (enabled: boolean) => void;
-    toolsCatalog?: Array<{ name: string; description: string; source: 'builtin' | 'mcp' }>;
+    getActiveAgentId?: () => string;
+    setActiveAgentId?: (id: string) => boolean;
+    toolsCatalog?: Array<{ name: string; description: string; source: 'builtin' | 'local' | 'plugin' | 'mcp' }>;
     // Function to clean up resources (close connections, etc.)
     cleanup?: () => Promise<void>;
     registry: ISlashCommandRegistry;

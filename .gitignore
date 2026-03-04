@@ -9,3 +9,4 @@ coverage
 *.log
 apps/cli/sea-prep.blob
 apps/cli/release/
+opencode/
