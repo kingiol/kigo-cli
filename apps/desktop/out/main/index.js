@@ -2,11 +2,11 @@ import { app, ipcMain, BrowserWindow, shell } from "electron";
 import * as path$h from "node:path";
 import path__default, { resolve as resolve$4, join as join$2 } from "node:path";
 import { fileURLToPath } from "node:url";
-import * as fs$i from "node:fs/promises";
+import * as fs$h from "node:fs/promises";
 import fs__default from "node:fs/promises";
 import * as os$2 from "node:os";
 import os__default from "node:os";
-import * as fs$h from "node:fs";
+import * as fs$i from "node:fs";
 import { promises, ReadStream as ReadStream$1 } from "node:fs";
 import require$$0$5 from "fs";
 import require$$0$4 from "path";
@@ -3714,6 +3714,13 @@ const DEFAULT_TOOLS_CONFIG = {
   timeoutMs: 12e4,
   maxOutputChars: 12e3
 };
+const DEFAULT_COMPACTION_CONFIG = {
+  enabled: true,
+  microKeepRecentToolMessages: 6,
+  autoThresholdTokens: 5e4,
+  summaryMaxChars: 12e4,
+  transcriptDir: ".kigo/state/transcripts"
+};
 const DEFAULT_PERMISSIONS_CONFIG = {
   allow: [],
   block: [],
@@ -3767,6 +3774,13 @@ const ToolsConfigSchema = objectType({
   timeoutMs: numberType().int().min(1).default(DEFAULT_TOOLS_CONFIG.timeoutMs),
   maxOutputChars: numberType().int().min(256).default(DEFAULT_TOOLS_CONFIG.maxOutputChars)
 });
+const CompactionConfigSchema = objectType({
+  enabled: booleanType().default(DEFAULT_COMPACTION_CONFIG.enabled),
+  microKeepRecentToolMessages: numberType().int().min(0).default(DEFAULT_COMPACTION_CONFIG.microKeepRecentToolMessages),
+  autoThresholdTokens: numberType().int().min(1e3).default(DEFAULT_COMPACTION_CONFIG.autoThresholdTokens),
+  summaryMaxChars: numberType().int().min(1e3).default(DEFAULT_COMPACTION_CONFIG.summaryMaxChars),
+  transcriptDir: stringType().default(DEFAULT_COMPACTION_CONFIG.transcriptDir)
+});
 const CLIConfigSchema = objectType({
   session: stringType().optional(),
   stream: booleanType().default(true)
@@ -3803,6 +3817,7 @@ const KigoConfigSchema = objectType({
   skills: SkillsConfigSchema.default(DEFAULT_SKILLS_CONFIG),
   plugins: PluginsConfigSchema.default([]),
   tools: ToolsConfigSchema.default(DEFAULT_TOOLS_CONFIG),
+  compaction: CompactionConfigSchema.default(DEFAULT_COMPACTION_CONFIG),
   permissions: PermissionsConfigSchema.default(DEFAULT_PERMISSIONS_CONFIG)
 }).default({
   model: DEFAULT_MODEL_CONFIG,
@@ -3813,6 +3828,7 @@ const KigoConfigSchema = objectType({
   skills: DEFAULT_SKILLS_CONFIG,
   plugins: [],
   tools: DEFAULT_TOOLS_CONFIG,
+  compaction: DEFAULT_COMPACTION_CONFIG,
   permissions: DEFAULT_PERMISSIONS_CONFIG
 });
 const DEFAULT_CONFIG = {
@@ -3824,6 +3840,7 @@ const DEFAULT_CONFIG = {
   skills: DEFAULT_SKILLS_CONFIG,
   plugins: [],
   tools: DEFAULT_TOOLS_CONFIG,
+  compaction: DEFAULT_COMPACTION_CONFIG,
   permissions: DEFAULT_PERMISSIONS_CONFIG
 };
 /*! js-yaml 4.1.1 https://github.com/nodeca/js-yaml @license MIT */
@@ -6549,6 +6566,202 @@ const IPC_CHANNELS = {
   exportAudit: "export:audit",
   appQuit: "app:quit"
 };
+const DEFAULT_AGENT_COMPACTION_OPTIONS = {
+  enabled: true,
+  microKeepRecentToolMessages: 6,
+  autoThresholdTokens: 5e4,
+  summaryMaxChars: 12e4,
+  transcriptDir: ".kigo/state/transcripts"
+};
+function resolveOptions(options2) {
+  return {
+    ...DEFAULT_AGENT_COMPACTION_OPTIONS,
+    ...options2
+  };
+}
+function buildToolNameMap(messages) {
+  const map2 = /* @__PURE__ */ new Map();
+  for (const message of messages) {
+    if (message.role !== "assistant" || !message.toolCalls) {
+      continue;
+    }
+    for (const toolCall of message.toolCalls) {
+      if (toolCall.id && toolCall.name) {
+        map2.set(toolCall.id, toolCall.name);
+      }
+    }
+  }
+  return map2;
+}
+function estimateMessageTokens(messages) {
+  const text2 = messages.map((message) => {
+    const toolCalls = message.toolCalls ? JSON.stringify(message.toolCalls) : "";
+    return `${message.role}
+${message.content}
+${toolCalls}`;
+  }).join("\n");
+  return Math.ceil(text2.length / 4);
+}
+function microCompactMessages(messages, keepRecentToolMessages) {
+  if (keepRecentToolMessages < 0) {
+    return [...messages];
+  }
+  const toolNameMap = buildToolNameMap(messages);
+  let recentToolMessagesSeen = 0;
+  const compacted = messages.map((message) => ({ ...message }));
+  for (let index3 = compacted.length - 1; index3 >= 0; index3 -= 1) {
+    const message = compacted[index3];
+    if (message.role !== "tool") {
+      continue;
+    }
+    recentToolMessagesSeen += 1;
+    if (recentToolMessagesSeen <= keepRecentToolMessages) {
+      continue;
+    }
+    const toolName = message.toolCallId ? toolNameMap.get(message.toolCallId) || "tool" : "tool";
+    message.content = `[Compacted tool result: used ${toolName} earlier]`;
+  }
+  return compacted;
+}
+function splitTrailingUserMessage(messages) {
+  if (messages.length === 0) {
+    return { history: [], trailingUser: null };
+  }
+  const last2 = messages[messages.length - 1];
+  if (last2.role !== "user") {
+    return { history: [...messages], trailingUser: null };
+  }
+  return {
+    history: messages.slice(0, -1),
+    trailingUser: { ...last2 }
+  };
+}
+function serializeMessagesForSummary(messages, maxChars) {
+  const serialized = JSON.stringify(messages, null, 2);
+  if (serialized.length <= maxChars) {
+    return serialized;
+  }
+  return `${serialized.slice(0, maxChars)}
+...`;
+}
+function buildFallbackSummary(messages) {
+  const lastUser = [...messages].reverse().find((message) => message.role === "user");
+  const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
+  const toolCount = messages.filter((message) => message.role === "tool").length;
+  const lines = [
+    "- Conversation was compacted with fallback summarization.",
+    `- Total messages before compaction: ${messages.length}.`,
+    `- Tool messages seen: ${toolCount}.`
+  ];
+  if (lastUser?.content) {
+    lines.push(`- Latest user request: ${lastUser.content.slice(0, 240)}.`);
+  }
+  if (lastAssistant?.content) {
+    lines.push(`- Latest assistant response: ${lastAssistant.content.slice(0, 240)}.`);
+  }
+  return lines.join("\n");
+}
+async function summarizeConversation(provider2, messages, maxChars) {
+  if (messages.length === 0) {
+    return "- No prior conversation to summarize.";
+  }
+  const summaryPrompt = [
+    "Summarize this coding session for continuity.",
+    "Keep the answer concise Markdown bullets.",
+    "Preserve:",
+    "- current user goal",
+    "- files or subsystems touched",
+    "- decisions already made",
+    "- pending tasks and blockers",
+    "- notable tool results that still matter",
+    "",
+    "Conversation:",
+    serializeMessagesForSummary(messages, maxChars)
+  ].join("\n");
+  try {
+    const response2 = await provider2.chatNonStream({
+      messages: [{ role: "user", content: summaryPrompt }],
+      maxTokens: 800,
+      temperature: 0.2
+    });
+    if (response2.content?.trim()) {
+      return response2.content.trim();
+    }
+  } catch {
+  }
+  return buildFallbackSummary(messages);
+}
+function resolveTranscriptDir(transcriptDir, projectRoot) {
+  if (path$h.isAbsolute(transcriptDir)) {
+    return transcriptDir;
+  }
+  return path$h.join(projectRoot, transcriptDir);
+}
+async function writeTranscript(messages, transcriptDir, mode) {
+  await fs$h.mkdir(transcriptDir, { recursive: true });
+  const filePath = path$h.join(
+    transcriptDir,
+    `transcript_${mode}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jsonl`
+  );
+  const content = messages.map((message) => JSON.stringify(message)).join("\n");
+  await fs$h.writeFile(filePath, content, "utf-8");
+  return filePath;
+}
+async function compactConversation(options2) {
+  const resolved = resolveOptions(options2.config);
+  const mode = options2.mode || "manual";
+  const projectRoot = options2.projectRoot || process.env.KIGO_PROJECT_ROOT || process.cwd();
+  const originalMessages = options2.messages.map((message) => ({ ...message }));
+  const microCompacted = microCompactMessages(
+    originalMessages,
+    resolved.microKeepRecentToolMessages
+  );
+  const estimatedTokensBefore = estimateMessageTokens(microCompacted);
+  const { history, trailingUser } = splitTrailingUserMessage(microCompacted);
+  const transcriptPath = await writeTranscript(
+    originalMessages,
+    resolveTranscriptDir(resolved.transcriptDir, projectRoot),
+    mode
+  );
+  const summary = await summarizeConversation(
+    options2.provider,
+    history.length > 0 ? history : microCompacted,
+    resolved.summaryMaxChars
+  );
+  const compactedMessages = [
+    {
+      role: "user",
+      content: [
+        "[Compacted conversation]",
+        `Reason: ${options2.reason || (mode === "auto" ? "auto_threshold" : "manual_request")}`,
+        `Transcript: ${transcriptPath}`,
+        "",
+        "Summary:",
+        summary
+      ].join("\n")
+    },
+    {
+      role: "assistant",
+      content: "Understood. Continuing from compacted context."
+    }
+  ];
+  if (trailingUser) {
+    compactedMessages.push(trailingUser);
+  }
+  const artifact = {
+    mode,
+    transcriptPath,
+    summary,
+    messagesBefore: originalMessages.length,
+    messagesAfter: compactedMessages.length,
+    estimatedTokensBefore,
+    estimatedTokensAfter: estimateMessageTokens(compactedMessages)
+  };
+  return {
+    messages: compactedMessages,
+    artifact
+  };
+}
 let Agent$7 = class Agent2 {
   constructor(options2) {
     this.options = options2;
@@ -6562,6 +6775,7 @@ let Agent$7 = class Agent2 {
     this.parallelToolCalls = options2.parallelToolCalls ?? false;
     this.allowedTools = new Set(options2.allowedTools || []);
     this.blockedTools = new Set(options2.blockedTools || []);
+    this.compactionOptions = options2.compaction;
     this.toolRateLimit = options2.toolRateLimit;
     if (options2.tools) {
       options2.tools.forEach((tool2) => this.tools.set(tool2.name, tool2));
@@ -6579,6 +6793,8 @@ let Agent$7 = class Agent2 {
   parallelToolCalls;
   allowedTools;
   blockedTools;
+  compactionOptions;
+  latestCompactionArtifact = null;
   toolRateLimit;
   toolCallTimes = /* @__PURE__ */ new Map();
   registerTool(tool2) {
@@ -6595,6 +6811,7 @@ let Agent$7 = class Agent2 {
       this.messages.push({ role: "user", content: input });
     }
     while (true) {
+      await this.maybeCompactBeforeTurn();
       const fullMessages = [
         { role: "system", content: this.options.systemPrompt },
         ...this.messages
@@ -6868,6 +7085,12 @@ let Agent$7 = class Agent2 {
   getMessages() {
     return this.messages;
   }
+  getEstimatedTokenCount() {
+    return estimateMessageTokens(this.messages);
+  }
+  getLatestCompactionArtifact() {
+    return this.latestCompactionArtifact;
+  }
   loadMessages(messages) {
     this.messages = [...messages];
   }
@@ -6879,6 +7102,41 @@ let Agent$7 = class Agent2 {
   }
   getSystemPrompt() {
     return this.options.systemPrompt;
+  }
+  async compact(options2 = {}) {
+    const enabled = this.compactionOptions?.enabled ?? false;
+    if (!enabled) {
+      return null;
+    }
+    const { messages, artifact } = await compactConversation({
+      messages: this.messages,
+      provider: this.options.provider,
+      projectRoot: process.env.KIGO_PROJECT_ROOT || process.cwd(),
+      mode: options2.mode || "manual",
+      reason: options2.reason,
+      config: this.compactionOptions
+    });
+    this.messages = messages;
+    this.latestCompactionArtifact = artifact;
+    return artifact;
+  }
+  async maybeCompactBeforeTurn() {
+    const enabled = this.compactionOptions?.enabled ?? false;
+    if (!enabled) {
+      return;
+    }
+    this.messages = microCompactMessages(
+      this.messages,
+      this.compactionOptions?.microKeepRecentToolMessages ?? 6
+    );
+    const threshold = this.compactionOptions?.autoThresholdTokens ?? 5e4;
+    if (estimateMessageTokens(this.messages) <= threshold) {
+      return;
+    }
+    await this.compact({
+      mode: "auto",
+      reason: `estimated_tokens>${threshold}`
+    });
   }
 };
 class AgentScheduler {
@@ -6967,6 +7225,348 @@ class AgentScheduler {
   }
   getAgent() {
     return this.agent;
+  }
+}
+const LOW_RISK_TOOLS = /* @__PURE__ */ new Set([
+  "read_file",
+  "list_directory",
+  "glob_search",
+  "grep_search",
+  "codesearch",
+  "web_search",
+  "web_fetch",
+  "todo_read",
+  "task_get",
+  "task_list",
+  "task_ready",
+  "task_output",
+  "answer_questions",
+  "ask_user_question",
+  "get_skill",
+  "compact",
+  "shell_output"
+]);
+const MUTATING_TOOLS = /* @__PURE__ */ new Set([
+  "write_file",
+  "edit_file",
+  "apply_patch",
+  "multi_edit",
+  "run_shell",
+  "shell_kill",
+  "git_command",
+  "todo_write",
+  "task_create",
+  "task_update",
+  "task_claim",
+  "sub_agent_run"
+]);
+const DESTRUCTIVE_SHELL_PATTERNS = [
+  /\brm\s+-rf\b/i,
+  /\bgit\s+reset\s+--hard\b/i,
+  /\bgit\s+clean\s+-fd/i,
+  /\bgit\s+push\b/i,
+  /\bsudo\b/i,
+  /\bcurl\b.*\|\s*(bash|sh)\b/i,
+  /\bwget\b.*\|\s*(bash|sh)\b/i,
+  />\s*\/dev\//i,
+  /\bchmod\b/i,
+  /\bchown\b/i
+];
+function escapeRegExp(input) {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function matchesWildcard(input, pattern2) {
+  const regex = new RegExp(`^${escapeRegExp(pattern2).replace(/\\\*/g, ".*")}$`);
+  return regex.test(input);
+}
+function matchPermissionRule(rule, toolName, args) {
+  const trimmed = rule.trim();
+  if (!trimmed) return false;
+  const bashMatch = /^Bash\((.*)\)$/i.exec(trimmed);
+  if (bashMatch) {
+    if (toolName !== "run_shell") {
+      return false;
+    }
+    const expected = bashMatch[1]?.trim();
+    const command = args && typeof args === "object" && "command" in args && typeof args.command === "string" ? args.command : "";
+    if (!expected) {
+      return false;
+    }
+    return command.includes(expected);
+  }
+  return matchesWildcard(toolName, trimmed) || trimmed === toolName;
+}
+function getStringArg(args, key2) {
+  if (!args || typeof args !== "object" || !(key2 in args)) {
+    return "";
+  }
+  const value = args[key2];
+  return typeof value === "string" ? value : "";
+}
+function isCriticalShellCommand(command) {
+  const trimmed = command.trim();
+  if (!trimmed) {
+    return false;
+  }
+  return DESTRUCTIVE_SHELL_PATTERNS.some((pattern2) => pattern2.test(trimmed));
+}
+function classifyToolRisk(toolName, args, source) {
+  if (source === "mcp") {
+    return {
+      level: "high",
+      reason: "External MCP tools require explicit confirmation."
+    };
+  }
+  if (source === "plugin" || source === "local") {
+    if (LOW_RISK_TOOLS.has(toolName)) {
+      return {
+        level: "medium",
+        reason: "Extension tools are semi-trusted and should be reviewed before use."
+      };
+    }
+    return {
+      level: "high",
+      reason: "Extension tools can execute code outside the built-in safety boundary."
+    };
+  }
+  if (toolName === "run_shell") {
+    const command = getStringArg(args, "command");
+    if (isCriticalShellCommand(command)) {
+      return {
+        level: "critical",
+        reason: "This shell command looks destructive or hard to reverse."
+      };
+    }
+    return {
+      level: "high",
+      reason: "Shell commands can modify the workspace or local machine."
+    };
+  }
+  if (toolName === "git_command") {
+    const gitArgs = getStringArg(args, "args");
+    if (isCriticalShellCommand(`git ${gitArgs}`)) {
+      return {
+        level: "critical",
+        reason: "This git command can rewrite history or publish changes."
+      };
+    }
+    return {
+      level: "high",
+      reason: "Git commands can rewrite repository state."
+    };
+  }
+  if (MUTATING_TOOLS.has(toolName)) {
+    return {
+      level: "high",
+      reason: "This tool changes files, tasks, or running processes."
+    };
+  }
+  if (LOW_RISK_TOOLS.has(toolName)) {
+    return {
+      level: "low",
+      reason: "This tool is read-oriented and does not directly modify state."
+    };
+  }
+  return {
+    level: "medium",
+    reason: "This tool is not explicitly classified and should be reviewed."
+  };
+}
+function buildPermissionRule(toolName, args) {
+  if (toolName === "run_shell") {
+    const command = getStringArg(args, "command").trim();
+    if (command) {
+      return `Bash(${command})`;
+    }
+  }
+  return toolName;
+}
+function evaluatePermissionPolicy(config, toolName, args, source, allowOnceRules = [], denyOnceRules = []) {
+  const risk = classifyToolRisk(toolName, args, source);
+  for (const rule of denyOnceRules) {
+    if (matchPermissionRule(rule, toolName, args)) {
+      return {
+        resolution: "deny",
+        allowed: false,
+        requiresApproval: false,
+        reason: "denied_once",
+        matchedRule: rule,
+        action: "deny_once",
+        risk,
+        source
+      };
+    }
+  }
+  for (const rule of allowOnceRules) {
+    if (matchPermissionRule(rule, toolName, args)) {
+      return {
+        resolution: "allow",
+        allowed: true,
+        requiresApproval: false,
+        reason: "allowed_once",
+        matchedRule: rule,
+        action: "allow_once",
+        risk,
+        source
+      };
+    }
+  }
+  for (const rule of config.block) {
+    if (matchPermissionRule(rule, toolName, args)) {
+      return {
+        resolution: "deny",
+        allowed: false,
+        requiresApproval: false,
+        reason: "blocked",
+        matchedRule: rule,
+        action: "deny_always",
+        risk,
+        source
+      };
+    }
+  }
+  for (const rule of config.allow) {
+    if (matchPermissionRule(rule, toolName, args)) {
+      return {
+        resolution: "allow",
+        allowed: true,
+        requiresApproval: false,
+        reason: "allowed",
+        matchedRule: rule,
+        action: "allow_always",
+        risk,
+        source
+      };
+    }
+  }
+  if (risk.level === "low") {
+    return {
+      resolution: "allow",
+      allowed: true,
+      requiresApproval: false,
+      reason: "auto_allow_low_risk",
+      action: "allow_auto",
+      risk,
+      source
+    };
+  }
+  if (config.dontAsk) {
+    return {
+      resolution: "deny",
+      allowed: false,
+      requiresApproval: false,
+      reason: "approval_required_but_dont_ask",
+      action: "deny_auto",
+      risk,
+      source
+    };
+  }
+  return {
+    resolution: "prompt",
+    allowed: false,
+    requiresApproval: true,
+    reason: "approval_required",
+    action: "prompt",
+    risk,
+    source
+  };
+}
+function normalizeAuditPath(p2) {
+  if (p2.startsWith("~/")) {
+    return path$h.join(os$2.homedir(), p2.slice(2));
+  }
+  return p2;
+}
+class PermissionController {
+  constructor(config, options2 = {}) {
+    this.config = config;
+    this.options = options2;
+  }
+  allowOnceRules = /* @__PURE__ */ new Set();
+  denyOnceRules = /* @__PURE__ */ new Set();
+  getConfig() {
+    return this.config;
+  }
+  addAllow(rule) {
+    if (!this.config.allow.includes(rule)) {
+      this.config.allow.push(rule);
+    }
+  }
+  addBlock(rule) {
+    if (!this.config.block.includes(rule)) {
+      this.config.block.push(rule);
+    }
+  }
+  removeAllow(rule) {
+    const i2 = this.config.allow.indexOf(rule);
+    if (i2 < 0) return false;
+    this.config.allow.splice(i2, 1);
+    return true;
+  }
+  removeBlock(rule) {
+    const i2 = this.config.block.indexOf(rule);
+    if (i2 < 0) return false;
+    this.config.block.splice(i2, 1);
+    return true;
+  }
+  setDontAsk(value) {
+    this.config.dontAsk = value;
+  }
+  allowOnce(rule) {
+    this.allowOnceRules.add(rule);
+  }
+  denyOnce(rule) {
+    this.denyOnceRules.add(rule);
+  }
+  evaluate(toolName, args, source = "builtin") {
+    return evaluatePermissionPolicy(
+      this.config,
+      toolName,
+      args,
+      source,
+      this.allowOnceRules,
+      this.denyOnceRules
+    );
+  }
+  async applyDecision(toolName, args, action, source = "builtin") {
+    const rule = buildPermissionRule(toolName, args);
+    if (action === "allow_once") {
+      this.allowOnce(rule);
+    } else if (action === "deny_once") {
+      this.denyOnce(rule);
+    } else if (action === "allow_always") {
+      this.addAllow(rule);
+      await this.persist();
+    } else if (action === "deny_always") {
+      this.addBlock(rule);
+      await this.persist();
+    }
+    return this.evaluate(toolName, args, source);
+  }
+  async recordAudit(toolName, args, decision) {
+    const auditPath = normalizeAuditPath(
+      this.config.auditLogPath || "~/.kigo/permission-audit.log"
+    );
+    const dir = path$h.dirname(auditPath);
+    await fs$h.mkdir(dir, { recursive: true });
+    const line = JSON.stringify({
+      ts: (/* @__PURE__ */ new Date()).toISOString(),
+      toolName,
+      args,
+      decision
+    });
+    await fs$h.appendFile(auditPath, `${line}
+`, "utf-8");
+  }
+  async persist() {
+    if (!this.options.persist) {
+      return;
+    }
+    await this.options.persist({
+      ...this.config,
+      allow: [...this.config.allow],
+      block: [...this.config.block]
+    });
   }
 }
 class Semaphore {
@@ -7935,8 +8535,8 @@ class Session {
   constructor(sessionId, dbPath = DEFAULT_DB_PATH) {
     this.sessionId = sessionId || this.generateId();
     const dbDir = path$h.dirname(dbPath);
-    if (!fs$h.existsSync(dbDir)) {
-      fs$h.mkdirSync(dbDir, { recursive: true });
+    if (!fs$i.existsSync(dbDir)) {
+      fs$i.mkdirSync(dbDir, { recursive: true });
     }
     this.db = new Database(dbPath);
     this.initTables();
@@ -105169,7 +105769,7 @@ function applyChunks(content, filePath, chunks) {
 }
 async function readState(filePath) {
   try {
-    return await fs$i.readFile(filePath, "utf-8");
+    return await fs$h.readFile(filePath, "utf-8");
   } catch (error3) {
     if (error3.code === "ENOENT") {
       return null;
@@ -105254,11 +105854,11 @@ async function executeApplyPatch(input) {
       continue;
     }
     if (after2 === null) {
-      await fs$i.unlink(filePath);
+      await fs$h.unlink(filePath);
       continue;
     }
-    await fs$i.mkdir(path$h.dirname(filePath), { recursive: true });
-    await fs$i.writeFile(filePath, after2, "utf-8");
+    await fs$h.mkdir(path$h.dirname(filePath), { recursive: true });
+    await fs$h.writeFile(filePath, after2, "utf-8");
   }
   if (summary.length === 0) {
     return "Patch applied with no file changes.";
@@ -105312,7 +105912,7 @@ tool({
     let content = "";
     let fileExists = true;
     try {
-      content = await fs$i.readFile(targetPath, "utf-8");
+      content = await fs$h.readFile(targetPath, "utf-8");
     } catch (error3) {
       if (error3.code === "ENOENT") {
         fileExists = false;
@@ -105356,8 +105956,8 @@ tool({
         replacementSummary.push(`#${i2 + 1}: replaced 1 occurrence`);
       }
     }
-    await fs$i.mkdir(path$h.dirname(targetPath), { recursive: true });
-    await fs$i.writeFile(targetPath, nextContent, "utf-8");
+    await fs$h.mkdir(path$h.dirname(targetPath), { recursive: true });
+    await fs$h.writeFile(targetPath, nextContent, "utf-8");
     const relative2 = path$h.relative(process.cwd(), targetPath) || targetPath;
     return `Applied ${edits.length} edit(s) to ${relative2}
 ${replacementSummary.join("\n")}`;
@@ -110679,7 +111279,7 @@ tool({
       for (const file of files) {
         try {
           const fullPath = path__default.resolve(searchPath || process.cwd(), file);
-          const content = await fs$i.readFile(fullPath, "utf-8");
+          const content = await fs$h.readFile(fullPath, "utf-8");
           const lines = content.split("\n");
           for (let i2 = 0; i2 < lines.length; i2++) {
             const line = lines[i2];
@@ -175302,25 +175902,25 @@ function getSessionContext() {
   const toolCallId = process.env.KIGO_TOOL_CALL_ID || void 0;
   return { sessionId, toolCallId };
 }
-function sanitizeId$2(value) {
+function sanitizeId$3(value) {
   return value.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 function getTodoFile(sessionId) {
-  const safeSessionId = sanitizeId$2(sessionId);
+  const safeSessionId = sanitizeId$3(sessionId);
   return path$h.join(TODO_DIR, `${safeSessionId}.json`);
 }
 async function ensureTodoDir() {
-  await fs$i.mkdir(TODO_DIR, { recursive: true });
+  await fs$h.mkdir(TODO_DIR, { recursive: true });
 }
 async function loadTodos() {
   const { sessionId } = getSessionContext();
   const todoFile = getTodoFile(sessionId);
   try {
-    const content = await fs$i.readFile(todoFile, "utf-8");
+    const content = await fs$h.readFile(todoFile, "utf-8");
     return JSON.parse(content);
   } catch {
     try {
-      const legacyContent = await fs$i.readFile(LEGACY_TODO_FILE, "utf-8");
+      const legacyContent = await fs$h.readFile(LEGACY_TODO_FILE, "utf-8");
       const legacyTodos = JSON.parse(legacyContent);
       const migrated = (Array.isArray(legacyTodos) ? legacyTodos : []).map(
         (todo) => ({
@@ -175329,7 +175929,7 @@ async function loadTodos() {
         })
       );
       await ensureTodoDir();
-      await fs$i.writeFile(todoFile, JSON.stringify(migrated, null, 2), "utf-8");
+      await fs$h.writeFile(todoFile, JSON.stringify(migrated, null, 2), "utf-8");
       return migrated;
     } catch {
       return [];
@@ -175349,7 +175949,7 @@ async function saveTodos(todos) {
     children: todo.children ? todo.children.map(normalizeTodo) : void 0
   });
   const normalized = todos.map(normalizeTodo);
-  await fs$i.writeFile(
+  await fs$h.writeFile(
     getTodoFile(sessionId),
     JSON.stringify(normalized, null, 2),
     "utf-8"
@@ -178649,7 +179249,7 @@ class SkillLoader {
   }
   async findSkillFiles(dir, skills) {
     try {
-      const entries = await fs$i.readdir(dir, { withFileTypes: true });
+      const entries = await fs$h.readdir(dir, { withFileTypes: true });
       for (const entry2 of entries) {
         if (entry2.isDirectory()) {
           const subDir = path$h.join(dir, entry2.name);
@@ -178670,7 +179270,7 @@ class SkillLoader {
       return this.cache.get(skillPath);
     }
     try {
-      const content = await fs$i.readFile(skillPath, "utf-8");
+      const content = await fs$h.readFile(skillPath, "utf-8");
       const parsed = matter$1(content);
       const frontmatter = parsed.data;
       const body2 = parsed.content;
@@ -178711,7 +179311,7 @@ class SkillLoader {
   }
   async findSkillByName(dir, name) {
     try {
-      const entries = await fs$i.readdir(dir, { withFileTypes: true });
+      const entries = await fs$h.readdir(dir, { withFileTypes: true });
       for (const entry2 of entries) {
         if (entry2.isDirectory()) {
           const subDir = path$h.join(dir, entry2.name);
@@ -178767,20 +179367,20 @@ const ANSWER_DIR = path$h.join(os$2.homedir(), ".kigo", "answer-questions");
 function getSessionId() {
   return process.env.KIGO_SESSION_ID || "session_default";
 }
-function sanitizeId$1(value) {
+function sanitizeId$2(value) {
   return value.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 function getSessionFile() {
-  const sessionId = sanitizeId$1(getSessionId());
+  const sessionId = sanitizeId$2(getSessionId());
   return path$h.join(ANSWER_DIR, `${sessionId}.json`);
 }
 async function ensureAnswerDir() {
-  await fs$i.mkdir(ANSWER_DIR, { recursive: true });
+  await fs$h.mkdir(ANSWER_DIR, { recursive: true });
 }
 async function loadSessionData() {
   const file = getSessionFile();
   try {
-    const content = await fs$i.readFile(file, "utf-8");
+    const content = await fs$h.readFile(file, "utf-8");
     const parsed = JSON.parse(content);
     if (parsed && typeof parsed === "object" && parsed.questionnaires) {
       return parsed;
@@ -178791,7 +179391,7 @@ async function loadSessionData() {
 }
 async function saveSessionData(data2) {
   await ensureAnswerDir();
-  await fs$i.writeFile(getSessionFile(), JSON.stringify(data2, null, 2), "utf-8");
+  await fs$h.writeFile(getSessionFile(), JSON.stringify(data2, null, 2), "utf-8");
 }
 const questionSchema = objectType({
   id: stringType().optional().describe("Optional question id"),
@@ -179132,6 +179732,67 @@ tool({
     return lines.join("\n");
   }
 });
+const COMPACT_TOOL_NAME = "compact";
+function registerCompactTool(getController) {
+  if (registry.has(COMPACT_TOOL_NAME)) {
+    return;
+  }
+  registry.register({
+    name: COMPACT_TOOL_NAME,
+    description: "Compact the current conversation into a durable transcript and summary.",
+    schema: objectType({
+      reason: stringType().optional()
+    }),
+    execute: async ({ reason }) => {
+      const controller = getController();
+      if (!controller) {
+        throw new Error("Compaction controller not initialized");
+      }
+      const artifact = await controller.compact({ reason });
+      if (!artifact) {
+        return JSON.stringify(
+          {
+            type: "compact_disabled",
+            reason: "Compaction is disabled for the current session."
+          },
+          null,
+          2
+        );
+      }
+      return JSON.stringify(
+        {
+          type: "compact_result",
+          artifact
+        },
+        null,
+        2
+      );
+    }
+  });
+}
+class CompactionRuntime {
+  controllers = /* @__PURE__ */ new Map();
+  getSessionId;
+  constructor(options2 = {}) {
+    this.getSessionId = options2.getSessionId || (() => process.env.KIGO_SESSION_ID);
+    registerCompactTool(() => {
+      const sessionId = this.getSessionId();
+      if (!sessionId) {
+        return null;
+      }
+      return this.controllers.get(sessionId) || null;
+    });
+  }
+  register(sessionId, controller) {
+    this.controllers.set(sessionId, controller);
+  }
+  remove(sessionId) {
+    this.controllers.delete(sessionId);
+  }
+  clear() {
+    this.controllers.clear();
+  }
+}
 const SUB_AGENT_TOOL_NAME = "sub_agent_run";
 const subAgentSchema = objectType({
   task: stringType().min(1),
@@ -179204,6 +179865,420 @@ function registerSubAgentTool(getManager, options2 = {}) {
     }
   });
 }
+const TASK_GRAPH_DIR = path$h.join(".kigo", "state", "tasks");
+const MAX_EXECUTION_HISTORY = 10;
+function getProjectRoot() {
+  return process.env.KIGO_PROJECT_ROOT || process.cwd();
+}
+function getTaskGraphDir() {
+  return path$h.join(getProjectRoot(), TASK_GRAPH_DIR);
+}
+function sanitizeId$1(value) {
+  return value.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+function getLegacyTodoPath(sessionId) {
+  return path$h.join(os$2.homedir(), ".kigo", "todos", `${sanitizeId$1(sessionId)}.json`);
+}
+function getTaskPath(dir, taskId) {
+  return path$h.join(dir, `task_${taskId}.json`);
+}
+async function ensureTaskGraphDir(dir) {
+  await fs$h.mkdir(dir, { recursive: true });
+}
+async function listTaskFiles(dir) {
+  try {
+    const entries = await fs$h.readdir(dir);
+    return entries.filter((entry2) => /^task_\d+\.json$/.test(entry2));
+  } catch {
+    return [];
+  }
+}
+async function loadTask(dir, taskId) {
+  const content = await fs$h.readFile(getTaskPath(dir, taskId), "utf-8");
+  return normalizeTask(JSON.parse(content));
+}
+async function saveTask(dir, task) {
+  await fs$h.writeFile(
+    getTaskPath(dir, task.id),
+    JSON.stringify(normalizeTask(task), null, 2),
+    "utf-8"
+  );
+}
+async function loadAllTasks(dir) {
+  const files = await listTaskFiles(dir);
+  const tasks2 = await Promise.all(
+    files.map(async (file) => {
+      const content = await fs$h.readFile(path$h.join(dir, file), "utf-8");
+      return normalizeTask(JSON.parse(content));
+    })
+  );
+  return tasks2.sort((a2, b2) => a2.id - b2.id);
+}
+async function getNextTaskId(dir) {
+  const files = await listTaskFiles(dir);
+  const maxId = files.reduce((current, file) => {
+    const match2 = /^task_(\d+)\.json$/.exec(file);
+    return match2 ? Math.max(current, Number(match2[1])) : current;
+  }, 0);
+  return maxId + 1;
+}
+async function maybeMigrateLegacyTodos(dir) {
+  const existingFiles = await listTaskFiles(dir);
+  if (existingFiles.length > 0) {
+    return;
+  }
+  const sessionId = process.env.KIGO_SESSION_ID;
+  if (!sessionId) {
+    return;
+  }
+  try {
+    const content = await fs$h.readFile(getLegacyTodoPath(sessionId), "utf-8");
+    const parsed = JSON.parse(content);
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      return;
+    }
+    let nextId = 1;
+    const migrated = [];
+    const visit = (todo, parent2) => {
+      const now = Date.now();
+      const task = {
+        id: nextId++,
+        subject: todo.content,
+        description: "",
+        status: todo.status || "pending",
+        blockedBy: parent2 && parent2.status !== "completed" ? [parent2.id] : [],
+        blocks: [],
+        owner: "",
+        worktree: "",
+        source: "legacy_todo",
+        executionHistory: [],
+        createdAt: now,
+        updatedAt: now
+      };
+      migrated.push(task);
+      if (parent2) {
+        parent2.blocks.push(task.id);
+        parent2.updatedAt = now;
+      }
+      for (const child of todo.children || []) {
+        visit(child, task);
+      }
+      return task;
+    };
+    for (const todo of parsed) {
+      visit(todo, null);
+    }
+    await ensureTaskGraphDir(dir);
+    await Promise.all(migrated.map((task) => saveTask(dir, task)));
+  } catch {
+  }
+}
+function uniqueNumbers(values) {
+  return [...new Set(values)];
+}
+function summarizeRunText(value, maxChars = 2e3) {
+  if (!value) {
+    return void 0;
+  }
+  if (value.length <= maxChars) {
+    return value;
+  }
+  return `${value.slice(0, maxChars)}
+
+[truncated at ${maxChars} chars]`;
+}
+function normalizeExecutionHistory(history) {
+  if (!Array.isArray(history)) {
+    return [];
+  }
+  return history.filter((entry2) => entry2 && entry2.runId).sort((a2, b2) => b2.updatedAt - a2.updatedAt).slice(0, MAX_EXECUTION_HISTORY).map((entry2) => ({
+    ...entry2,
+    output: summarizeRunText(entry2.output),
+    error: summarizeRunText(entry2.error, 500)
+  }));
+}
+function normalizeTask(task) {
+  return {
+    ...task,
+    blockedBy: Array.isArray(task.blockedBy) ? task.blockedBy : [],
+    blocks: Array.isArray(task.blocks) ? task.blocks : [],
+    owner: task.owner || "",
+    worktree: task.worktree || "",
+    executionHistory: normalizeExecutionHistory(task.executionHistory)
+  };
+}
+function upsertExecutionHistory(history, input) {
+  const updatedAt = input.completedAt ?? input.startedAt ?? Date.now();
+  const nextEntry = {
+    runId: input.runId,
+    status: input.status,
+    updatedAt,
+    startedAt: input.startedAt,
+    completedAt: input.completedAt,
+    output: summarizeRunText(input.output),
+    error: summarizeRunText(input.error, 500)
+  };
+  const existing = history.find((entry2) => entry2.runId === input.runId);
+  const merged = existing ? history.map(
+    (entry2) => entry2.runId === input.runId ? {
+      ...entry2,
+      ...nextEntry,
+      startedAt: input.startedAt ?? entry2.startedAt,
+      completedAt: input.completedAt ?? entry2.completedAt,
+      output: nextEntry.output ?? entry2.output,
+      error: nextEntry.error ?? entry2.error
+    } : entry2
+  ) : [nextEntry, ...history];
+  return normalizeExecutionHistory(merged);
+}
+class TaskGraphStore {
+  constructor(dir = getTaskGraphDir()) {
+    this.dir = dir;
+  }
+  async ready() {
+    await ensureTaskGraphDir(this.dir);
+    await maybeMigrateLegacyTodos(this.dir);
+  }
+  async list(filters2) {
+    await this.ready();
+    const tasks2 = await loadAllTasks(this.dir);
+    return tasks2.filter((task) => {
+      if (filters2?.status && task.status !== filters2.status) {
+        return false;
+      }
+      if (filters2?.owner && task.owner !== filters2.owner) {
+        return false;
+      }
+      if (filters2?.readyOnly && (task.status !== "pending" || task.blockedBy.length > 0)) {
+        return false;
+      }
+      return true;
+    });
+  }
+  async get(taskId) {
+    await this.ready();
+    return loadTask(this.dir, taskId);
+  }
+  async create(input) {
+    await this.ready();
+    const taskId = await getNextTaskId(this.dir);
+    const now = Date.now();
+    const task = {
+      id: taskId,
+      subject: input.subject,
+      description: input.description || "",
+      status: "pending",
+      blockedBy: [],
+      blocks: [],
+      owner: input.owner || "",
+      worktree: "",
+      source: "task_graph",
+      executionHistory: [],
+      createdAt: now,
+      updatedAt: now
+    };
+    await saveTask(this.dir, task);
+    for (const dependencyId of uniqueNumbers(input.blockedBy || [])) {
+      await this.addDependency(dependencyId, taskId);
+    }
+    return this.get(taskId);
+  }
+  async update(input) {
+    await this.ready();
+    const task = await this.get(input.taskId);
+    const now = Date.now();
+    if (input.subject !== void 0) {
+      task.subject = input.subject;
+    }
+    if (input.description !== void 0) {
+      task.description = input.description;
+    }
+    if (input.owner !== void 0) {
+      task.owner = input.owner;
+    }
+    if (input.clearOwner) {
+      task.owner = "";
+    }
+    if (input.worktree !== void 0) {
+      task.worktree = input.worktree;
+    }
+    if (input.clearWorktree) {
+      task.worktree = "";
+    }
+    await saveTask(this.dir, { ...task, updatedAt: now });
+    for (const dependencyId of uniqueNumbers(input.addBlockedBy || [])) {
+      await this.addDependency(dependencyId, input.taskId);
+    }
+    for (const dependencyId of uniqueNumbers(input.removeBlockedBy || [])) {
+      await this.removeDependency(dependencyId, input.taskId);
+    }
+    if (input.status) {
+      const refreshed = await this.get(input.taskId);
+      refreshed.status = input.status;
+      refreshed.updatedAt = Date.now();
+      await saveTask(this.dir, refreshed);
+      if (input.status === "completed") {
+        await this.clearDependencyFromDependents(input.taskId);
+      }
+    }
+    return this.get(input.taskId);
+  }
+  async claim(taskId, owner) {
+    return this.update({ taskId, owner });
+  }
+  async recordExecution(input) {
+    await this.ready();
+    const task = await this.get(input.taskId);
+    task.lastRunId = input.runId;
+    task.lastRunStatus = input.status;
+    task.lastRunOutput = summarizeRunText(input.output);
+    task.lastRunError = input.error;
+    task.lastRunAt = input.completedAt ?? input.startedAt ?? Date.now();
+    task.executionHistory = upsertExecutionHistory(task.executionHistory, input);
+    task.updatedAt = task.lastRunAt;
+    await saveTask(this.dir, task);
+    return task;
+  }
+  async addDependency(fromTaskId, toTaskId) {
+    if (fromTaskId === toTaskId) {
+      throw new Error("A task cannot depend on itself.");
+    }
+    const fromTask = await this.get(fromTaskId);
+    const toTask = await this.get(toTaskId);
+    fromTask.blocks = uniqueNumbers([...fromTask.blocks, toTaskId]);
+    toTask.blockedBy = uniqueNumbers([...toTask.blockedBy, fromTaskId]);
+    fromTask.updatedAt = Date.now();
+    toTask.updatedAt = Date.now();
+    await Promise.all([
+      saveTask(this.dir, fromTask),
+      saveTask(this.dir, toTask)
+    ]);
+  }
+  async removeDependency(fromTaskId, toTaskId) {
+    const fromTask = await this.get(fromTaskId);
+    const toTask = await this.get(toTaskId);
+    fromTask.blocks = fromTask.blocks.filter((taskId) => taskId !== toTaskId);
+    toTask.blockedBy = toTask.blockedBy.filter((taskId) => taskId !== fromTaskId);
+    fromTask.updatedAt = Date.now();
+    toTask.updatedAt = Date.now();
+    await Promise.all([
+      saveTask(this.dir, fromTask),
+      saveTask(this.dir, toTask)
+    ]);
+  }
+  async clearDependencyFromDependents(taskId) {
+    const tasks2 = await this.list();
+    const updates = tasks2.filter((task) => task.blockedBy.includes(taskId)).map(async (task) => {
+      task.blockedBy = task.blockedBy.filter((dependencyId) => dependencyId !== taskId);
+      task.updatedAt = Date.now();
+      await saveTask(this.dir, task);
+    });
+    await Promise.all(updates);
+  }
+}
+const taskCreateSchema = objectType({
+  subject: stringType().min(1),
+  description: stringType().default(""),
+  blockedBy: arrayType(numberType().int().positive()).default([]),
+  owner: stringType().optional()
+});
+const taskUpdateSchema = objectType({
+  taskId: numberType().int().positive(),
+  subject: stringType().optional(),
+  description: stringType().optional(),
+  status: enumType(["pending", "in_progress", "completed", "failed"]).optional(),
+  addBlockedBy: arrayType(numberType().int().positive()).optional(),
+  removeBlockedBy: arrayType(numberType().int().positive()).optional(),
+  owner: stringType().optional(),
+  clearOwner: booleanType().default(false),
+  worktree: stringType().optional(),
+  clearWorktree: booleanType().default(false)
+});
+const taskGetSchema = objectType({
+  taskId: numberType().int().positive()
+});
+const taskListSchema = objectType({
+  status: enumType(["pending", "in_progress", "completed", "failed"]).optional(),
+  owner: stringType().optional(),
+  readyOnly: booleanType().default(false)
+});
+const taskClaimSchema = objectType({
+  taskId: numberType().int().positive(),
+  owner: stringType().min(1)
+});
+function createStore() {
+  return new TaskGraphStore();
+}
+tool({
+  name: "task_create",
+  description: "Create a project-level task graph node.",
+  schema: taskCreateSchema,
+  execute: async ({ subject, description, blockedBy, owner }) => {
+    const store = createStore();
+    const task = await store.create({ subject, description, blockedBy, owner });
+    return JSON.stringify({ type: "task_created", task }, null, 2);
+  }
+});
+tool({
+  name: "task_update",
+  description: "Update a project-level task graph node, including dependencies and status.",
+  schema: taskUpdateSchema,
+  execute: async (params) => {
+    const store = createStore();
+    const task = await store.update(params);
+    return JSON.stringify({ type: "task_updated", task }, null, 2);
+  }
+});
+tool({
+  name: "task_get",
+  description: "Get one project-level task graph node by id.",
+  schema: taskGetSchema,
+  execute: async ({ taskId }) => {
+    const store = createStore();
+    const task = await store.get(taskId);
+    return JSON.stringify({ type: "task", task }, null, 2);
+  }
+});
+tool({
+  name: "task_list",
+  description: "List project-level task graph nodes.",
+  schema: taskListSchema,
+  execute: async ({ status: status3, owner, readyOnly }) => {
+    const store = createStore();
+    const tasks2 = await store.list({ status: status3, owner, readyOnly });
+    return JSON.stringify(
+      {
+        type: readyOnly ? "task_ready_list" : "task_list",
+        count: tasks2.length,
+        tasks: tasks2
+      },
+      null,
+      2
+    );
+  }
+});
+tool({
+  name: "task_ready",
+  description: "List ready-to-run task graph nodes that have no unresolved dependencies.",
+  schema: objectType({
+    owner: stringType().optional()
+  }),
+  execute: async ({ owner }) => {
+    const store = createStore();
+    const tasks2 = await store.list({ owner, readyOnly: true });
+    return JSON.stringify({ type: "task_ready_list", count: tasks2.length, tasks: tasks2 }, null, 2);
+  }
+});
+tool({
+  name: "task_claim",
+  description: "Claim a ready task for an owner.",
+  schema: taskClaimSchema,
+  execute: async ({ taskId, owner }) => {
+    const store = createStore();
+    const task = await store.claim(taskId, owner);
+    return JSON.stringify({ type: "task_claimed", task }, null, 2);
+  }
+});
 const taskOutputSchema = objectType({
   taskId: stringType().optional().describe("Task id to fetch. Omit to list tasks."),
   sessionId: stringType().optional().describe("Session id. Defaults to current session."),
@@ -179217,7 +180292,7 @@ function getTaskFile(sessionId) {
 }
 async function loadTasks(sessionId) {
   try {
-    const content = await fs$i.readFile(getTaskFile(sessionId), "utf-8");
+    const content = await fs$h.readFile(getTaskFile(sessionId), "utf-8");
     const parsed = JSON.parse(content);
     return Array.isArray(parsed) ? parsed : [];
   } catch {
@@ -179349,22 +180424,22 @@ class ApprovalManager {
       this.pending.set(requestId, resolve3);
     });
   }
-  resolve(requestId, approved) {
+  resolve(requestId, action) {
     const handler = this.pending.get(requestId);
     if (!handler) return false;
-    handler(approved);
+    handler(action);
     this.pending.delete(requestId);
     void appendAudit({
       sessionId: this.sessionId,
       timestamp: Date.now(),
       type: "approval_decision",
-      data: { requestId, approved }
+      data: { requestId, action }
     });
     return true;
   }
   rejectAll() {
     for (const [, resolve3] of this.pending) {
-      resolve3(false);
+      resolve3("deny_once");
     }
     this.pending.clear();
   }
@@ -179375,6 +180450,7 @@ class ChatService {
   }
   sessions = /* @__PURE__ */ new Map();
   subAgentRuntime = new SubAgentRuntime({ allowNestedDefault: false });
+  compactionRuntime = new CompactionRuntime();
   async start(input, config, existingSessionId) {
     const webContents = this.getWebContents();
     if (!webContents) throw new Error("No active window");
@@ -179398,15 +180474,38 @@ ${skillsPrompt}`;
     const mcpManager = new MCPManager();
     await mcpManager.initialize(config.mcpServers ?? []);
     const sessionId = existingSessionId ?? `desktop_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    process.env.KIGO_PROJECT_ROOT = process.cwd();
     const approvalManager = new ApprovalManager(webContents, sessionId);
+    const permissionController = new PermissionController(config.permissions, {
+      persist: async (permissions) => {
+        config.permissions = {
+          ...config.permissions,
+          ...permissions,
+          allow: [...permissions.allow],
+          block: [...permissions.block]
+        };
+        await saveConfig(config);
+      }
+    });
     const sessionStore = new Session(sessionId);
     const history = await sessionStore.getMessages();
     const wrapTool = (tool2, source) => ({
       ...tool2,
       execute: async (params) => {
-        const approved = await approvalManager.request({ name: tool2.name, source, params });
-        if (!approved) {
-          return "Tool execution denied by user.";
+        let decision = permissionController.evaluate(tool2.name, params, source);
+        if (decision.requiresApproval) {
+          const action = await approvalManager.request({
+            name: tool2.name,
+            source,
+            params,
+            riskLevel: decision.risk.level,
+            reason: decision.risk.reason
+          });
+          decision = await permissionController.applyDecision(tool2.name, params, action, source);
+        }
+        await permissionController.recordAudit(tool2.name, params, decision);
+        if (!decision.allowed) {
+          return `Permission denied for ${tool2.name}: ${decision.reason}`;
         }
         return tool2.execute(params);
       }
@@ -179438,9 +180537,13 @@ ${mcpToolsInfo}`;
       provider: provider2,
       systemPrompt,
       tools: [...builtinTools, ...mcpTools],
-      sessionId
+      sessionId,
+      compaction: config.compaction
     });
     agent2.loadMessages(history);
+    this.compactionRuntime.register(sessionId, {
+      compact: async ({ reason }) => agent2.compact({ mode: "manual", reason })
+    });
     const scheduler = new AgentScheduler(agent2);
     this.sessions.set(sessionId, { sessionId, approvalManager, mcpManager });
     const emit = (event) => {
@@ -179499,15 +180602,16 @@ ${mcpToolsInfo}`;
         await mcpManager.close();
         sessionStore.close();
         this.sessions.delete(sessionId);
+        this.compactionRuntime.remove(sessionId);
         this.subAgentRuntime.removeManager(sessionId);
       }
     })();
     return sessionId;
   }
-  approve(sessionId, requestId, approved) {
+  approve(sessionId, requestId, action) {
     const session = this.sessions.get(sessionId);
     if (!session) return;
-    session.approvalManager.resolve(requestId, approved);
+    session.approvalManager.resolve(requestId, action);
   }
 }
 function summarizeTitle(input) {
@@ -179598,15 +180702,15 @@ const TOKENS_DIR = path$h.join(os$2.homedir(), ".kigo", "tokens");
 const TOKEN_EXPIRY_BUFFER_MS = 60 * 1e3;
 class TokenStorage {
   static async save(tokens) {
-    await fs$i.mkdir(TOKENS_DIR, { recursive: true });
+    await fs$h.mkdir(TOKENS_DIR, { recursive: true });
     const filePath = path$h.join(TOKENS_DIR, `${tokens.provider}.json`);
-    await fs$i.writeFile(filePath, JSON.stringify(tokens, null, 2), "utf-8");
-    await fs$i.chmod(filePath, 384);
+    await fs$h.writeFile(filePath, JSON.stringify(tokens, null, 2), "utf-8");
+    await fs$h.chmod(filePath, 384);
   }
   static async load(provider2) {
     try {
       const filePath = path$h.join(TOKENS_DIR, `${provider2}.json`);
-      const content = await fs$i.readFile(filePath, "utf-8");
+      const content = await fs$h.readFile(filePath, "utf-8");
       return JSON.parse(content);
     } catch {
       return null;
@@ -179615,13 +180719,13 @@ class TokenStorage {
   static async delete(provider2) {
     try {
       const filePath = path$h.join(TOKENS_DIR, `${provider2}.json`);
-      await fs$i.unlink(filePath);
+      await fs$h.unlink(filePath);
     } catch {
     }
   }
   static async list() {
     try {
-      const files = await fs$i.readdir(TOKENS_DIR);
+      const files = await fs$h.readdir(TOKENS_DIR);
       return files.filter((f2) => f2.endsWith(".json")).map((f2) => f2.replace(".json", ""));
     } catch {
       return [];
@@ -202893,7 +203997,7 @@ app.whenReady().then(() => {
     return { sessionId };
   });
   ipcMain.handle(IPC_CHANNELS.chatApprove, async (_event, payload) => {
-    chatService.approve(payload.sessionId, payload.requestId, payload.approved);
+    chatService.approve(payload.sessionId, payload.requestId, payload.action);
   });
   ipcMain.handle(IPC_CHANNELS.sessionList, async () => ({ sessions: await listSessions() }));
   ipcMain.handle(IPC_CHANNELS.sessionLoad, async (_event, payload) => ({

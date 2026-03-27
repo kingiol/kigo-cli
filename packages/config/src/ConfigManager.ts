@@ -12,6 +12,7 @@ import {
   type KigoConfig,
   type MCPServerConfig,
   type PluginConfig,
+  type CompactionConfig,
   type ToolsConfig,
 } from './configSchema.js';
 
@@ -53,6 +54,7 @@ export class ConfigManager {
       skills: { ...DEFAULT_CONFIG.skills },
       plugins: [...(DEFAULT_CONFIG.plugins || [])],
       tools: { ...DEFAULT_CONFIG.tools },
+      compaction: { ...DEFAULT_CONFIG.compaction },
       permissions: { ...DEFAULT_CONFIG.permissions },
     };
   }
@@ -67,6 +69,7 @@ export class ConfigManager {
     normalized.agent = normalized.agent || {};
     normalized.plugins = normalized.plugins || [];
     normalized.tools = normalized.tools || {};
+    normalized.compaction = normalized.compaction || {};
 
     const modelProvider = normalized.model?.provider;
     const providerModel = normalized.model?.name;
@@ -312,6 +315,10 @@ export class ConfigManager {
 
   getToolsConfig(): ToolsConfig {
     return this.config?.tools || DEFAULT_CONFIG.tools;
+  }
+
+  getCompactionConfig(): CompactionConfig {
+    return this.config?.compaction || DEFAULT_CONFIG.compaction;
   }
 
   getToolLoadPaths(): string[] {

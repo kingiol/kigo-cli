@@ -7,12 +7,13 @@ import {
   Agent,
   AgentRegistry,
   AgentScheduler,
+  type CompactionArtifact,
   ExecutionModeController,
   ProviderFactory,
   Session,
 } from "@kigo/core";
 import { getConfigManager } from "../config/ConfigManager.js";
-import { SubAgentRuntime, registry, SkillLoader, type Tool as RuntimeTool } from "@kigo/tools";
+import { CompactionRuntime, SubAgentRuntime, registry, SkillLoader, type Tool as RuntimeTool } from "@kigo/tools";
 import { MCPManager } from "@kigo/mcp";
 import { StatusLine } from "../display/StatusLine.js";
 import { SlashCommandRegistry } from "../commands/slash/Registry.js";
@@ -28,6 +29,8 @@ import { PlanCommand } from "../commands/slash/definitions/PlanCommand.js";
 import { ToolsCommand } from "../commands/slash/definitions/ToolsCommand.js";
 import { AgentCommand } from "../commands/slash/definitions/AgentCommand.js";
 import { PermissionController } from "./PermissionController.js";
+import { promptForToolApproval } from "./approvalPrompt.js";
+import { PlanSessionController } from "./PlanSessionController.js";
 import { TaskManager } from "./TaskManager.js";
 import { PluginManager, type LoadedExternalTool, type PluginExecutionContext } from "@kigo/plugin";
 
@@ -267,7 +270,17 @@ export async function createInteractiveRuntime(
   options: InteractiveOptions
 ): Promise<InteractiveRuntime> {
   const loadedConfig = await configManager.load();
-  const permissionController = new PermissionController(loadedConfig.permissions);
+  const permissionController = new PermissionController(loadedConfig.permissions, {
+    persist: async (permissions) => {
+      loadedConfig.permissions = {
+        ...loadedConfig.permissions,
+        ...permissions,
+        allow: [...permissions.allow],
+        block: [...permissions.block],
+      };
+      await configManager.save(loadedConfig);
+    },
+  });
   registry.clearBySource(["local", "plugin"]);
 
   // Load skills metadata
@@ -324,9 +337,11 @@ export async function createInteractiveRuntime(
   }
 
   const toolsConfig = configManager.getToolsConfig();
+  const compactionConfig = configManager.getCompactionConfig();
   const providerConfig = configManager.getProviderConfig();
   const provider = providerConfig.provider;
   const modelName = options.model || providerConfig.model || configManager.getModelName();
+  process.env.KIGO_PROJECT_ROOT = process.cwd();
 
   if (!providerConfig.apiKey && provider !== "ollama") {
     console.error(
@@ -350,6 +365,7 @@ export async function createInteractiveRuntime(
   const session = new Session(options.session);
   const sessionId = session.getId();
   const sessionHistory = await session.getMessages();
+  const planSessionController = new PlanSessionController(process.cwd(), sessionId);
 
   const pluginManager = new PluginManager(process.cwd());
 
@@ -389,6 +405,9 @@ export async function createInteractiveRuntime(
     allowNestedDefault: false,
     getSessionId: () => sessionId,
   });
+  const compactionRuntime = new CompactionRuntime({
+    getSessionId: () => sessionId,
+  });
 
   const agentRegistry = new AgentRegistry(configManager.getAgentOverrides());
   const executionMode = new ExecutionModeController(agentRegistry, "build");
@@ -396,16 +415,36 @@ export async function createInteractiveRuntime(
   const builtInTools = registry.getAll();
   const toolsCatalog = registry.getCatalog();
   const mcpTools = mcpManager.getTools();
+  const toolSourceMap = new Map<string, "builtin" | "local" | "plugin" | "mcp">([
+    ...toolsCatalog.map((tool) => [tool.name, tool.source]),
+    ...mcpTools.map((tool) => [tool.name, "mcp" as const]),
+  ]);
 
   const createGuardedTool = (tool: RuntimeTool): RuntimeTool => ({
     ...tool,
     execute: async (params: any): Promise<string> => {
+      const toolSource = toolSourceMap.get(tool.name) || "builtin";
       const modeDecision = executionMode.evaluateTool(tool.name);
       if (!modeDecision.allowed) {
         return `Tool blocked by active agent (${executionMode.getActiveAgentId()}): ${tool.name}`;
       }
 
-      const decision = permissionController.evaluate(tool.name, params);
+      const planDecision = planSessionController.evaluateTool(tool.name, params, toolSource);
+      if (!planDecision.allowed) {
+        return `Tool blocked while plan is pending: ${tool.name} (${planDecision.reason})`;
+      }
+
+      let decision = permissionController.evaluate(tool.name, params, toolSource);
+      if (decision.requiresApproval) {
+        const action = await promptForToolApproval({
+          toolName: tool.name,
+          toolSource,
+          params,
+          decision,
+        });
+        decision = await permissionController.applyDecision(tool.name, params, action, toolSource);
+      }
+
       await permissionController.recordAudit(tool.name, params, decision);
       if (!decision.allowed) {
         return `Permission denied for ${tool.name}: ${decision.reason}`;
@@ -446,10 +485,15 @@ export async function createInteractiveRuntime(
     tools: allTools,
     reasoningEffort: providerConfig.reasoningEffort,
     sessionId,
+    compaction: compactionConfig,
   });
   if (sessionHistory.length > 0) {
     agent.loadMessages(sessionHistory);
   }
+  compactionRuntime.register(sessionId, {
+    compact: async ({ reason }): Promise<CompactionArtifact | null> =>
+      agent.compact({ mode: "manual", reason }),
+  });
   let lastSavedMessageIndex = sessionHistory.length;
 
   // Create scheduler
@@ -481,6 +525,7 @@ export async function createInteractiveRuntime(
     onEvent: (event: RuntimeEvent) => void
   ): Promise<void> {
     let lastUsage: any = undefined;
+    let sawDone = false;
     const toolCallNameMap = new Map<string, string>();
 
     for await (const event of scheduler.run(input)) {
@@ -519,6 +564,7 @@ export async function createInteractiveRuntime(
 
       if (event.type === "done") {
         lastUsage = event.data?.usage;
+        sawDone = true;
       }
     }
 
@@ -535,6 +581,15 @@ export async function createInteractiveRuntime(
     }
     session.updateContextTokens(session.getContextTokenCount());
 
+    if (sawDone) {
+      const latestAssistant = [...messages]
+        .reverse()
+        .find((message) => message.role === "assistant" && message.content.trim().length > 0);
+      if (latestAssistant) {
+        await planSessionController.captureDraft(latestAssistant.content);
+      }
+    }
+
     // Update status line
     statusLine.updateUsage(session.getUsage() as any);
   }
@@ -549,6 +604,7 @@ export async function createInteractiveRuntime(
       configManager,
       mcpManager,
       permissionController,
+      planSessionController,
       taskManager,
       isPlanModeEnabled: () => executionMode.isPlanMode(),
       setPlanModeEnabled: (enabled: boolean) => {
@@ -570,6 +626,7 @@ export async function createInteractiveRuntime(
       ],
       registry: slashRegistry,
       cleanup: async () => {
+        compactionRuntime.remove(sessionId);
         await mcpManager.close();
         session.close();
         if (extraCleanup) {
@@ -581,6 +638,7 @@ export async function createInteractiveRuntime(
   }
 
   async function close(): Promise<void> {
+    compactionRuntime.remove(sessionId);
     await mcpManager.close();
     session.close();
   }

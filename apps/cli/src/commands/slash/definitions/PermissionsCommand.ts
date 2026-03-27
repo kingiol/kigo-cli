@@ -37,6 +37,17 @@ ${chalk.bold("Permissions:")}
       return;
     }
 
-    console.log("Usage: /permissions [show|allow-once <rule>]");
+    if (action === "deny-once") {
+      const rule = args.slice(1).join(" ").trim();
+      if (!rule) {
+        console.log("Usage: /permissions deny-once <rule>");
+        return;
+      }
+      controller.denyOnce(rule);
+      console.log(`Added temporary deny rule: ${rule}`);
+      return;
+    }
+
+    console.log("Usage: /permissions [show|allow-once <rule>|deny-once <rule>]");
   }
 }

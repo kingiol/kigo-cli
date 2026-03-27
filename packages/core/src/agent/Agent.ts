@@ -5,6 +5,13 @@
 import type { Tool, StreamingEvent, Message } from '../types.js';
 import type { BaseProvider } from '../models/BaseProvider.js';
 import type { ProviderCapabilities } from '../models/BaseProvider.js';
+import {
+  compactConversation,
+  estimateMessageTokens,
+  microCompactMessages,
+  type AgentCompactionOptions,
+  type CompactionArtifact,
+} from './compaction.js';
 
 export interface AgentOptions {
   provider: BaseProvider;
@@ -23,6 +30,7 @@ export interface AgentOptions {
   allowedTools?: string[];
   blockedTools?: string[];
   responseFormat?: any;
+  compaction?: Partial<AgentCompactionOptions>;
   toolRateLimit?: {
     maxCalls: number;
     windowMs: number;
@@ -42,6 +50,8 @@ export class Agent {
   private parallelToolCalls: boolean;
   private allowedTools: Set<string>;
   private blockedTools: Set<string>;
+  private compactionOptions?: Partial<AgentCompactionOptions>;
+  private latestCompactionArtifact: CompactionArtifact | null = null;
   private toolRateLimit?: { maxCalls: number; windowMs: number };
   private toolCallTimes: Map<string, number[]> = new Map();
 
@@ -56,6 +66,7 @@ export class Agent {
     this.parallelToolCalls = options.parallelToolCalls ?? false;
     this.allowedTools = new Set(options.allowedTools || []);
     this.blockedTools = new Set(options.blockedTools || []);
+    this.compactionOptions = options.compaction;
     this.toolRateLimit = options.toolRateLimit;
 
     if (options.tools) {
@@ -81,6 +92,8 @@ export class Agent {
     }
 
     while (true) {
+      await this.maybeCompactBeforeTurn();
+
       const fullMessages = [
         { role: 'system' as const, content: this.options.systemPrompt },
         ...this.messages,
@@ -400,6 +413,14 @@ export class Agent {
     return this.messages;
   }
 
+  getEstimatedTokenCount(): number {
+    return estimateMessageTokens(this.messages);
+  }
+
+  getLatestCompactionArtifact(): CompactionArtifact | null {
+    return this.latestCompactionArtifact;
+  }
+
   loadMessages(messages: Message[]): void {
     this.messages = [...messages];
   }
@@ -414,5 +435,50 @@ export class Agent {
 
   getSystemPrompt(): string {
     return this.options.systemPrompt;
+  }
+
+  async compact(options: {
+    mode?: 'auto' | 'manual';
+    reason?: string;
+  } = {}): Promise<CompactionArtifact | null> {
+    const enabled = this.compactionOptions?.enabled ?? false;
+    if (!enabled) {
+      return null;
+    }
+
+    const { messages, artifact } = await compactConversation({
+      messages: this.messages,
+      provider: this.options.provider,
+      projectRoot: process.env.KIGO_PROJECT_ROOT || process.cwd(),
+      mode: options.mode || 'manual',
+      reason: options.reason,
+      config: this.compactionOptions,
+    });
+
+    this.messages = messages;
+    this.latestCompactionArtifact = artifact;
+    return artifact;
+  }
+
+  private async maybeCompactBeforeTurn(): Promise<void> {
+    const enabled = this.compactionOptions?.enabled ?? false;
+    if (!enabled) {
+      return;
+    }
+
+    this.messages = microCompactMessages(
+      this.messages,
+      this.compactionOptions?.microKeepRecentToolMessages ?? 6
+    );
+
+    const threshold = this.compactionOptions?.autoThresholdTokens ?? 50000;
+    if (estimateMessageTokens(this.messages) <= threshold) {
+      return;
+    }
+
+    await this.compact({
+      mode: 'auto',
+      reason: `estimated_tokens>${threshold}`,
+    });
   }
 }

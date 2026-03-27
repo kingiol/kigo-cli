@@ -1,14 +1,24 @@
 import type { WebContents } from 'electron';
 import os from 'node:os';
 import path from 'node:path';
-import { Agent, AgentScheduler, Session, type StreamingEvent } from '@kigo/core';
+import {
+  Agent,
+  AgentScheduler,
+  PermissionController,
+  Session,
+  type CompactionArtifact,
+  type PermissionDecisionAction,
+  type StreamingEvent,
+  type ToolExecutionSource
+} from '@kigo/core';
 import { ProviderFactory } from '@kigo/core';
 import { MCPManager } from '@kigo/mcp';
-import { SubAgentRuntime, registry, SkillLoader } from '@kigo/tools';
+import { CompactionRuntime, SubAgentRuntime, registry, SkillLoader } from '@kigo/tools';
 import '@kigo/tools';
 import type { KigoConfig } from '@kigo/config';
 import { IPC_CHANNELS } from '../shared/ipc.js';
 import { appendAudit } from './auditStore.js';
+import { saveConfig } from './config.js';
 
 const DEFAULT_SYSTEM_PROMPT = `You are Kigo Desktop, a focused AI coding assistant.
 Use available tools when they are the best way to complete a task.`;
@@ -22,17 +32,19 @@ type ApprovalRequest = {
   requestId: string;
   tool: {
     name: string;
-    source: 'builtin' | 'mcp';
+    source: ToolExecutionSource;
     params: unknown;
+    riskLevel: 'low' | 'medium' | 'high' | 'critical';
+    reason: string;
   };
 };
 
 class ApprovalManager {
-  private pending = new Map<string, (approved: boolean) => void>();
+  private pending = new Map<string, (action: PermissionDecisionAction) => void>();
 
   constructor(private webContents: WebContents, private sessionId: string) {}
 
-  request(tool: ApprovalRequest['tool']): Promise<boolean> {
+  request(tool: ApprovalRequest['tool']): Promise<PermissionDecisionAction> {
     const requestId = `${this.sessionId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const payload = { sessionId: this.sessionId, requestId, tool };
     this.webContents.send(IPC_CHANNELS.chatApproval, payload);
@@ -48,23 +60,23 @@ class ApprovalManager {
     });
   }
 
-  resolve(requestId: string, approved: boolean): boolean {
+  resolve(requestId: string, action: PermissionDecisionAction): boolean {
     const handler = this.pending.get(requestId);
     if (!handler) return false;
-    handler(approved);
+    handler(action);
     this.pending.delete(requestId);
     void appendAudit({
       sessionId: this.sessionId,
       timestamp: Date.now(),
       type: 'approval_decision',
-      data: { requestId, approved }
+      data: { requestId, action }
     });
     return true;
   }
 
   rejectAll(): void {
     for (const [, resolve] of this.pending) {
-      resolve(false);
+      resolve('deny_once');
     }
     this.pending.clear();
   }
@@ -79,6 +91,7 @@ type ChatSession = {
 export class ChatService {
   private sessions = new Map<string, ChatSession>();
   private subAgentRuntime = new SubAgentRuntime({ allowNestedDefault: false });
+  private compactionRuntime = new CompactionRuntime();
 
   constructor(private getWebContents: () => WebContents | null) {}
 
@@ -112,19 +125,42 @@ export class ChatService {
     await mcpManager.initialize(config.mcpServers ?? []);
 
     const sessionId = existingSessionId ?? `desktop_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    process.env.KIGO_PROJECT_ROOT = process.cwd();
     const approvalManager = new ApprovalManager(webContents, sessionId);
+    const permissionController = new PermissionController(config.permissions, {
+      persist: async (permissions) => {
+        config.permissions = {
+          ...config.permissions,
+          ...permissions,
+          allow: [...permissions.allow],
+          block: [...permissions.block]
+        };
+        await saveConfig(config);
+      }
+    });
     const sessionStore = new Session(sessionId);
     const history = await sessionStore.getMessages();
 
     const wrapTool = (
       tool: { name: string; description: string; parameters: any; execute: (params: any) => Promise<string> },
-      source: 'builtin' | 'mcp'
+      source: ToolExecutionSource
     ) => ({
       ...tool,
       execute: async (params: any) => {
-        const approved = await approvalManager.request({ name: tool.name, source, params });
-        if (!approved) {
-          return 'Tool execution denied by user.';
+        let decision = permissionController.evaluate(tool.name, params, source);
+        if (decision.requiresApproval) {
+          const action = await approvalManager.request({
+            name: tool.name,
+            source,
+            params,
+            riskLevel: decision.risk.level,
+            reason: decision.risk.reason
+          });
+          decision = await permissionController.applyDecision(tool.name, params, action, source);
+        }
+        await permissionController.recordAudit(tool.name, params, decision);
+        if (!decision.allowed) {
+          return `Permission denied for ${tool.name}: ${decision.reason}`;
         }
         return tool.execute(params);
       }
@@ -160,9 +196,14 @@ export class ChatService {
       provider,
       systemPrompt,
       tools: [...builtinTools, ...mcpTools],
-      sessionId
+      sessionId,
+      compaction: config.compaction
     });
     agent.loadMessages(history);
+    this.compactionRuntime.register(sessionId, {
+      compact: async ({ reason }): Promise<CompactionArtifact | null> =>
+        agent.compact({ mode: 'manual', reason })
+    });
 
     const scheduler = new AgentScheduler(agent);
 
@@ -225,6 +266,7 @@ export class ChatService {
         await mcpManager.close();
         sessionStore.close();
         this.sessions.delete(sessionId);
+        this.compactionRuntime.remove(sessionId);
         this.subAgentRuntime.removeManager(sessionId);
       }
     })();
@@ -232,10 +274,10 @@ export class ChatService {
     return sessionId;
   }
 
-  approve(sessionId: string, requestId: string, approved: boolean): void {
+  approve(sessionId: string, requestId: string, action: PermissionDecisionAction): void {
     const session = this.sessions.get(sessionId);
     if (!session) return;
-    session.approvalManager.resolve(requestId, approved);
+    session.approvalManager.resolve(requestId, action);
   }
 }
 

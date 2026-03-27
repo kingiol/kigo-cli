@@ -173,15 +173,17 @@ export type ChatApprovalPayload = {
   requestId: string;
   tool: {
     name: string;
-    source: 'builtin' | 'mcp';
+    source: 'builtin' | 'local' | 'plugin' | 'mcp';
     params: unknown;
+    riskLevel: 'low' | 'medium' | 'high' | 'critical';
+    reason: string;
   };
 };
 
 export type ChatApprovePayload = {
   sessionId: string;
   requestId: string;
-  approved: boolean;
+  action: 'allow_once' | 'allow_always' | 'deny_once' | 'deny_always';
 };
 
 export type SessionListResponse = {

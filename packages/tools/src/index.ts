@@ -23,7 +23,9 @@ export * from './skill/skill.js';
 export * from './answer/answerQuestions.js';
 export * from './answer/askUserQuestion.js';
 export * from './agent/batch.js';
+export * from './agent/compact.js';
 export * from './agent/subAgent.js';
+export * from './agent/taskGraph.js';
 export * from './agent/taskOutput.js';
 export * from './agent/runtime.js';
 

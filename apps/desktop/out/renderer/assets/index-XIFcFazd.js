@@ -14757,6 +14757,13 @@ const DEFAULT_TOOLS_CONFIG = {
   timeoutMs: 12e4,
   maxOutputChars: 12e3
 };
+const DEFAULT_COMPACTION_CONFIG = {
+  enabled: true,
+  microKeepRecentToolMessages: 6,
+  autoThresholdTokens: 5e4,
+  summaryMaxChars: 12e4,
+  transcriptDir: ".kigo/state/transcripts"
+};
 const DEFAULT_PERMISSIONS_CONFIG = {
   allow: [],
   block: [],
@@ -14810,6 +14817,13 @@ const ToolsConfigSchema = objectType({
   timeoutMs: numberType().int().min(1).default(DEFAULT_TOOLS_CONFIG.timeoutMs),
   maxOutputChars: numberType().int().min(256).default(DEFAULT_TOOLS_CONFIG.maxOutputChars)
 });
+const CompactionConfigSchema = objectType({
+  enabled: booleanType().default(DEFAULT_COMPACTION_CONFIG.enabled),
+  microKeepRecentToolMessages: numberType().int().min(0).default(DEFAULT_COMPACTION_CONFIG.microKeepRecentToolMessages),
+  autoThresholdTokens: numberType().int().min(1e3).default(DEFAULT_COMPACTION_CONFIG.autoThresholdTokens),
+  summaryMaxChars: numberType().int().min(1e3).default(DEFAULT_COMPACTION_CONFIG.summaryMaxChars),
+  transcriptDir: stringType().default(DEFAULT_COMPACTION_CONFIG.transcriptDir)
+});
 const CLIConfigSchema = objectType({
   session: stringType().optional(),
   stream: booleanType().default(true)
@@ -14846,6 +14860,7 @@ const KigoConfigSchema = objectType({
   skills: SkillsConfigSchema.default(DEFAULT_SKILLS_CONFIG),
   plugins: PluginsConfigSchema.default([]),
   tools: ToolsConfigSchema.default(DEFAULT_TOOLS_CONFIG),
+  compaction: CompactionConfigSchema.default(DEFAULT_COMPACTION_CONFIG),
   permissions: PermissionsConfigSchema.default(DEFAULT_PERMISSIONS_CONFIG)
 }).default({
   model: DEFAULT_MODEL_CONFIG,
@@ -14856,6 +14871,7 @@ const KigoConfigSchema = objectType({
   skills: DEFAULT_SKILLS_CONFIG,
   plugins: [],
   tools: DEFAULT_TOOLS_CONFIG,
+  compaction: DEFAULT_COMPACTION_CONFIG,
   permissions: DEFAULT_PERMISSIONS_CONFIG
 });
 const NAV_ITEMS = [
@@ -15103,6 +15119,8 @@ function App() {
           requestId: payload.requestId,
           toolName: payload.tool.name,
           source: payload.tool.source,
+          riskLevel: payload.tool.riskLevel,
+          reason: payload.tool.reason,
           params: JSON.stringify(payload.tool.params, null, 2)
         }
       ]);
@@ -15598,9 +15616,9 @@ function App() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
-  const handleApproval = async (requestId, approved) => {
+  const handleApproval = async (requestId, action) => {
     if (!window.kigo?.chat || !sessionId) return;
-    await window.kigo.chat.approve({ sessionId, requestId, approved });
+    await window.kigo.chat.approve({ sessionId, requestId, action });
     setPendingApprovals((prev) => prev.filter((item) => item.requestId !== requestId));
     setAuditRecords((prev) => [
       ...prev,
@@ -15608,7 +15626,7 @@ function App() {
         sessionId,
         timestamp: Date.now(),
         type: "approval_decision",
-        data: { requestId, approved }
+        data: { requestId, action }
       }
     ]);
   };
@@ -15875,13 +15893,18 @@ function App() {
                       /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mcp-title", children: item.toolName }),
                       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mcp-meta", children: [
                         "Source: ",
-                        item.source
+                        item.source,
+                        " · Risk: ",
+                        item.riskLevel
                       ] }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mcp-meta", children: item.reason }),
                       /* @__PURE__ */ jsxRuntimeExports.jsx("pre", { className: "approval-params", children: item.params })
                     ] }),
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "row-actions", children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: () => handleApproval(item.requestId, false), children: "Deny" }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "primary", onClick: () => handleApproval(item.requestId, true), children: "Approve" })
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: () => handleApproval(item.requestId, "deny_once"), children: "Deny Once" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: () => handleApproval(item.requestId, "deny_always"), children: "Always Deny" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ghost", onClick: () => handleApproval(item.requestId, "allow_once"), children: "Allow Once" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "primary", onClick: () => handleApproval(item.requestId, "allow_always"), children: "Always Allow" })
                     ] })
                   ] }, item.requestId)) }),
                   /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "divider" }),

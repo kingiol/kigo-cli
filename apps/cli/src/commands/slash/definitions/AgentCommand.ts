@@ -7,6 +7,7 @@ export class AgentCommand implements SlashCommand {
   async execute(args: string[], context: CommandContext): Promise<void> {
     const getActive = context.getActiveAgentId;
     const setActive = context.setActiveAgentId;
+    const planController = context.planSessionController;
 
     if (!getActive || !setActive) {
       console.log("Agent runtime controls not available.");
@@ -29,6 +30,11 @@ export class AgentCommand implements SlashCommand {
       const target = (args[1] || "").trim().toLowerCase();
       if (!target) {
         console.log("Usage: /agent use <build|plan>");
+        return;
+      }
+
+      if (planController && !planController.canSwitchToAgent(target)) {
+        console.log("Build agent is locked while a plan is waiting. Use /plan apply or /plan cancel.");
         return;
       }
 

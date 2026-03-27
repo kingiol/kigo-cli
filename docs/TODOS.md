@@ -38,6 +38,12 @@
 - ✅ 已实现：任务恢复（`/task resume <taskId>`）
 - ✅ 已实现：任务输出检索（`task_output` 工具 + `/task output <taskId>`）
 - ✅ 已实现：任务持久化（按 session 落盘）
+- ✅ 已实现：项目级任务板入口（`/task board|ready|create|show|claim|execute`）
+- ✅ 已实现：task run 项目级落盘（`.kigo/state/task-runs`）与最近一次执行结果回写
+- ✅ 已实现：项目级任务事件流（`.kigo/state/task-events`）与 `/task history` 查看入口
+- ✅ 已实现：task graph `failed` 状态，可保留失败态而不是回退为 `pending`
+- ✅ 已实现：task node 内保存最近执行摘要（bounded history），不再只有最后一次 run 镜像
+- ✅ 已实现：`/task output|resume` 可从 task node 回退，不再只依赖 session run 文件
 - 🟡 待补齐：任务并行度、调度策略和跨会话管理能力仍较基础
 
 ### 功能描述
@@ -74,15 +80,15 @@ Claude Code 的 Task 工具允许启动专门的子代理来处理不同类型�
 
 ### 当前状态
 
-- ✅ 已实现：Plan Mode 开关（`/plan on|off|status`）
+- ✅ 已实现：Plan Mode 工作流（`/plan on|approve|apply|cancel|status`，草案自动落盘，`/plan save` 仍可手动覆盖）
 - ✅ 已实现：Plan Mode 只读约束（限制为只读工具白名单）
 - ✅ 已实现：Shift+Tab 快捷切换 Agent/Plan 模式（UI）
-- 🟡 待补齐：用户确认后再执行的强制工作流（EnterPlanMode/ExitPlanMode 完整语义）
-- 🟡 待补齐：计划文件自动生成与审阅闭环
+- ✅ 已实现：用户确认后再执行的强制工作流（批准前写工具锁定）
+- 🟡 待补齐：计划文件自动生成与更完整的审阅闭环
 
 ### 功能描述
 
-EnterPlanMode / ExitPlanMode 工具实现在执行任务前先探索代码库、设计方案，用户确认后再实施。
+Plan workflow 实现在执行任务前先探索代码库、设计方案，用户确认后再实施。
 
 ### 工作流程
 
@@ -159,7 +165,9 @@ VS Code / JetBrains 等原生 IDE 插件集成。
 - ✅ 已实现：运行时权限拦截（工具执行前判定）
 - ✅ 已实现：临时权限提升（`/permissions allow-once <rule>`）
 - ✅ 已实现：权限审计日志落盘
-- 🟡 待补齐：交互式审批（每次风险操作弹窗确认）与更细粒度风险分级
+- ✅ 已实现：交互式审批（CLI + Desktop）
+- ✅ 已实现：风险分级（low / medium / high / critical）
+- ✅ 已实现：持久化决策（always allow / always deny）
 
 ### 功能描述
 

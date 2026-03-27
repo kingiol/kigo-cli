@@ -3,6 +3,7 @@ import { Agent, Session } from '@kigo/core';
 import { MCPManager } from '@kigo/mcp';
 import { getConfigManager } from '../../config/ConfigManager.js';
 import { PermissionController } from '../../interactive/PermissionController.js';
+import { PlanSessionController } from '../../interactive/PlanSessionController.js';
 import { TaskManager } from '../../interactive/TaskManager.js';
 
 export type ConfigManager = Awaited<ReturnType<typeof getConfigManager>>;
@@ -13,6 +14,7 @@ export interface CommandContext {
     configManager: ConfigManager;
     mcpManager: MCPManager;
     permissionController?: PermissionController;
+    planSessionController?: PlanSessionController;
     taskManager?: TaskManager;
     isPlanModeEnabled?: () => boolean;
     setPlanModeEnabled?: (enabled: boolean) => void;

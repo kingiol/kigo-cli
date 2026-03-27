@@ -53,9 +53,13 @@ type ChatMessage = {
 type ApprovalItem = {
   requestId: string;
   toolName: string;
-  source: 'builtin' | 'mcp';
+  source: 'builtin' | 'local' | 'plugin' | 'mcp';
+  riskLevel: 'low' | 'medium' | 'high' | 'critical';
+  reason: string;
   params: string;
 };
+
+type ApprovalAction = 'allow_once' | 'allow_always' | 'deny_once' | 'deny_always';
 
 type AuditRecord = {
   sessionId: string;
@@ -357,6 +361,8 @@ export default function App() {
           requestId: payload.requestId,
           toolName: payload.tool.name,
           source: payload.tool.source,
+          riskLevel: payload.tool.riskLevel,
+          reason: payload.tool.reason,
           params: JSON.stringify(payload.tool.params, null, 2)
         }
       ]);
@@ -930,9 +936,9 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
-  const handleApproval = async (requestId: string, approved: boolean) => {
+  const handleApproval = async (requestId: string, action: ApprovalAction) => {
     if (!window.kigo?.chat || !sessionId) return;
-    await window.kigo.chat.approve({ sessionId, requestId, approved });
+    await window.kigo.chat.approve({ sessionId, requestId, action });
     setPendingApprovals((prev) => prev.filter((item) => item.requestId !== requestId));
     setAuditRecords((prev) => [
       ...prev,
@@ -940,7 +946,7 @@ export default function App() {
         sessionId,
         timestamp: Date.now(),
         type: 'approval_decision',
-        data: { requestId, approved }
+        data: { requestId, action }
       }
     ]);
   };
@@ -1253,15 +1259,22 @@ export default function App() {
                             <div key={item.requestId} className="approval-card">
                               <div>
                                 <div className="mcp-title">{item.toolName}</div>
-                                <div className="mcp-meta">Source: {item.source}</div>
+                                <div className="mcp-meta">Source: {item.source} · Risk: {item.riskLevel}</div>
+                                <div className="mcp-meta">{item.reason}</div>
                                 <pre className="approval-params">{item.params}</pre>
                               </div>
                               <div className="row-actions">
-                                <button className="ghost" onClick={() => handleApproval(item.requestId, false)}>
-                                  Deny
+                                <button className="ghost" onClick={() => handleApproval(item.requestId, 'deny_once')}>
+                                  Deny Once
                                 </button>
-                                <button className="primary" onClick={() => handleApproval(item.requestId, true)}>
-                                  Approve
+                                <button className="ghost" onClick={() => handleApproval(item.requestId, 'deny_always')}>
+                                  Always Deny
+                                </button>
+                                <button className="ghost" onClick={() => handleApproval(item.requestId, 'allow_once')}>
+                                  Allow Once
+                                </button>
+                                <button className="primary" onClick={() => handleApproval(item.requestId, 'allow_always')}>
+                                  Always Allow
                                 </button>
                               </div>
                             </div>

@@ -57,7 +57,14 @@ kigo -s my-project "help me implement a new feature"
 KIGO_MODEL="claude-opus-4-20250514" kigo "your prompt"
 ```
 
-Note: single-prompt execution is currently stubbed in the CLI; interactive mode is the primary workflow today.
+Single-prompt execution works in the CLI; interactive mode remains the primary workflow for multi-step tasks.
+
+Interactive runs now include:
+
+- Risk-based tool approvals with `allow once`, `allow always`, `deny once`, and `deny always`
+- A gated plan workflow: `/plan on` → draft the plan (auto-saved) → `/plan approve` → `/plan apply`
+- Project task graph commands: `/task board|ready|create|show|history|claim|execute`
+- Task nodes now keep bounded execution summaries, so recent run state survives on the node itself
 
 ## Configuration
 
@@ -99,6 +106,11 @@ kigo auth login google    # OAuth login (Google)
 kigo auth status          # Auth status
 kigo mcp list             # List MCP servers
 kigo lsp                  # Start LSP server (stdio)
+/plan on                  # Enter read-only planning mode in the interactive CLI
+/task history 12          # Show recent task events for task node #12
+/task output 12           # Read the latest known execution summary for task node #12
+/task resume 12           # Resume task node #12 even if its session run file is gone
+/permissions show         # Show current runtime permission rules
 ```
 
 ## Built-in Tools
@@ -117,9 +129,16 @@ kigo lsp                  # Start LSP server (stdio)
 | `grep_search` | Search file contents |
 | `web_search` | Search the web (DuckDuckGo) |
 | `web_fetch` | Fetch and analyze web pages |
+| `compact` | Compact the current conversation into a transcript + summary |
 | `todo_read` | Read the current todo list |
 | `todo_write` | Write the todo list (replace all todos) |
 | `answer_questions` | Ask multi-choice questions and collect responses |
+| `task_create` | Create a project-level task graph node |
+| `task_update` | Update a task graph node, including dependencies |
+| `task_get` | Get one task graph node by id |
+| `task_list` | List task graph nodes |
+| `task_ready` | List ready-to-run task graph nodes |
+| `task_claim` | Claim a task graph node for an owner |
 | `sub_agent_run` | Run a specialized sub-agent to handle a sub-task |
 | `get_skill` | Load skill content |
 

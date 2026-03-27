@@ -19,6 +19,12 @@ describe('@kigo/tools', () => {
         expect(tools.registry.get('batch')).toBeDefined();
         expect(tools.registry.get('answer_questions')).toBeDefined();
         expect(tools.registry.get('ask_user_question')).toBeDefined();
+        expect(tools.registry.get('task_create')).toBeDefined();
+        expect(tools.registry.get('task_update')).toBeDefined();
+        expect(tools.registry.get('task_get')).toBeDefined();
+        expect(tools.registry.get('task_list')).toBeDefined();
+        expect(tools.registry.get('task_ready')).toBeDefined();
+        expect(tools.registry.get('task_claim')).toBeDefined();
         expect(tools.registry.get('task_output')).toBeDefined();
     });
 

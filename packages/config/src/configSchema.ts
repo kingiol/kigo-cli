@@ -25,6 +25,14 @@ const DEFAULT_TOOLS_CONFIG = {
   maxOutputChars: 12000,
 };
 
+const DEFAULT_COMPACTION_CONFIG = {
+  enabled: true,
+  microKeepRecentToolMessages: 6,
+  autoThresholdTokens: 50000,
+  summaryMaxChars: 120000,
+  transcriptDir: '.kigo/state/transcripts',
+} as const;
+
 const DEFAULT_PERMISSIONS_CONFIG: {
   allow: string[];
   block: string[];
@@ -95,6 +103,14 @@ export const ToolsConfigSchema = z.object({
   maxOutputChars: z.number().int().min(256).default(DEFAULT_TOOLS_CONFIG.maxOutputChars),
 });
 
+export const CompactionConfigSchema = z.object({
+  enabled: z.boolean().default(DEFAULT_COMPACTION_CONFIG.enabled),
+  microKeepRecentToolMessages: z.number().int().min(0).default(DEFAULT_COMPACTION_CONFIG.microKeepRecentToolMessages),
+  autoThresholdTokens: z.number().int().min(1000).default(DEFAULT_COMPACTION_CONFIG.autoThresholdTokens),
+  summaryMaxChars: z.number().int().min(1000).default(DEFAULT_COMPACTION_CONFIG.summaryMaxChars),
+  transcriptDir: z.string().default(DEFAULT_COMPACTION_CONFIG.transcriptDir),
+});
+
 // CLI configuration
 export const CLIConfigSchema = z.object({
   session: z.string().optional(),
@@ -140,6 +156,7 @@ export const KigoConfigSchema = z.object({
   skills: SkillsConfigSchema.default(DEFAULT_SKILLS_CONFIG),
   plugins: PluginsConfigSchema.default([]),
   tools: ToolsConfigSchema.default(DEFAULT_TOOLS_CONFIG),
+  compaction: CompactionConfigSchema.default(DEFAULT_COMPACTION_CONFIG),
   permissions: PermissionsConfigSchema.default(DEFAULT_PERMISSIONS_CONFIG),
 }).default({
   model: DEFAULT_MODEL_CONFIG,
@@ -150,6 +167,7 @@ export const KigoConfigSchema = z.object({
   skills: DEFAULT_SKILLS_CONFIG,
   plugins: [],
   tools: DEFAULT_TOOLS_CONFIG,
+  compaction: DEFAULT_COMPACTION_CONFIG,
   permissions: DEFAULT_PERMISSIONS_CONFIG,
 });
 
@@ -165,6 +183,7 @@ export type SkillsConfig = z.infer<typeof SkillsConfigSchema>;
 export type PluginConfig = z.infer<typeof PluginConfigSchema>;
 export type PluginsConfig = z.infer<typeof PluginsConfigSchema>;
 export type ToolsConfig = z.infer<typeof ToolsConfigSchema>;
+export type CompactionConfig = z.infer<typeof CompactionConfigSchema>;
 export type PermissionsConfig = z.infer<typeof PermissionsConfigSchema>;
 export type KigoConfig = z.infer<typeof KigoConfigSchema>;
 
@@ -178,5 +197,6 @@ export const DEFAULT_CONFIG: KigoConfig = {
   skills: DEFAULT_SKILLS_CONFIG,
   plugins: [],
   tools: DEFAULT_TOOLS_CONFIG,
+  compaction: DEFAULT_COMPACTION_CONFIG,
   permissions: DEFAULT_PERMISSIONS_CONFIG,
 };

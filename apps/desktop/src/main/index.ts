@@ -98,7 +98,7 @@ app.whenReady().then(() => {
     return { sessionId };
   });
   ipcMain.handle(IPC_CHANNELS.chatApprove, async (_event, payload) => {
-    chatService.approve(payload.sessionId, payload.requestId, payload.approved);
+    chatService.approve(payload.sessionId, payload.requestId, payload.action);
   });
   ipcMain.handle(IPC_CHANNELS.sessionList, async () => ({ sessions: await listSessions() }));
   ipcMain.handle(IPC_CHANNELS.sessionLoad, async (_event, payload) => ({
