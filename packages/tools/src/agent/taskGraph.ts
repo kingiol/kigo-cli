@@ -8,7 +8,7 @@ export type TaskNodeStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
 
 export interface TaskExecutionSummary {
   runId: string;
-  status: 'running' | 'completed' | 'failed';
+  status: 'running' | 'waiting' | 'completed' | 'failed';
   updatedAt: number;
   startedAt?: number;
   completedAt?: number;
@@ -27,7 +27,7 @@ export interface TaskNode {
   worktree: string;
   source: 'task_graph' | 'legacy_todo';
   lastRunId?: string;
-  lastRunStatus?: 'running' | 'completed' | 'failed';
+  lastRunStatus?: 'running' | 'waiting' | 'completed' | 'failed';
   lastRunOutput?: string;
   lastRunError?: string;
   lastRunAt?: number;
@@ -222,7 +222,7 @@ function upsertExecutionHistory(
   history: TaskExecutionSummary[],
   input: {
     runId: string;
-    status: 'running' | 'completed' | 'failed';
+    status: 'running' | 'waiting' | 'completed' | 'failed';
     startedAt?: number;
     completedAt?: number;
     output?: string;

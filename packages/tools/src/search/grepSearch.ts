@@ -7,6 +7,7 @@ import glob from 'fast-glob';
 import path from 'node:path';
 import { tool } from '../registry.js';
 import * as fs from 'node:fs/promises';
+import { getToolProjectRoot, resolveToolPath } from '../toolContext.js';
 
 export const grepSearchSchema = z.object({
   pattern: z.string().describe('Regex pattern to search for'),
@@ -20,7 +21,7 @@ tool({
   name: 'grep_search',
   description: 'Search file contents using regex pattern. Returns matching lines with file paths.',
   schema: grepSearchSchema,
-  execute: async ({ pattern, path: searchPath, include, maxFiles, caseInsensitive }) => {
+  execute: async ({ pattern, path: searchPath, include, maxFiles, caseInsensitive }, context) => {
     const ignore = [
       '**/node_modules/**',
       '**/.git/**',
@@ -33,11 +34,13 @@ tool({
       '**/*.min.js',
     ];
 
+    const root = searchPath ? resolveToolPath(searchPath, context) : getToolProjectRoot(context);
+
     try {
       // Find files to search
       const globPattern = include || '**/*.{ts,js,py,java,cpp,h,md,txt,json,yaml,yml}';
       const files = await glob(globPattern, {
-        cwd: searchPath || process.cwd(),
+        cwd: root,
         ignore,
         absolute: false,
         onlyFiles: true,
@@ -50,7 +53,7 @@ tool({
       // Search each file
       for (const file of files) {
         try {
-          const fullPath = path.resolve(searchPath || process.cwd(), file);
+          const fullPath = path.resolve(root, file);
           const content = await fs.readFile(fullPath, 'utf-8');
           const lines = content.split('\n');
 

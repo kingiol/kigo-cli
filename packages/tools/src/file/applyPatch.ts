@@ -7,6 +7,7 @@ import * as nodePath from 'node:path';
 import { z } from 'zod';
 import { tool } from '../registry.js';
 import { SecurityGuard } from '../security.js';
+import { getToolProjectRoot } from '../toolContext.js';
 
 type PatchChunk = {
   oldLines: string[];
@@ -54,7 +55,7 @@ export const applyPatchSchema = z
     message: 'patchText or patch is required',
   });
 
-function toAbsolutePath(inputPath: string): string {
+function toAbsolutePath(inputPath: string, projectRoot: string): string {
   const sanitized = SecurityGuard.sanitizePath(inputPath);
   const validationError = SecurityGuard.validatePath(sanitized);
   if (validationError) {
@@ -63,22 +64,22 @@ function toAbsolutePath(inputPath: string): string {
 
   return nodePath.isAbsolute(sanitized)
     ? nodePath.normalize(sanitized)
-    : nodePath.resolve(process.cwd(), sanitized);
+    : nodePath.resolve(projectRoot, sanitized);
 }
 
-function parseHeaderPath(line: string, prefix: string): string {
+function parseHeaderPath(line: string, prefix: string, projectRoot: string): string {
   const raw = line.slice(prefix.length).trim();
   if (!raw) {
     throw new Error(`Invalid patch header: ${line}`);
   }
-  return toAbsolutePath(raw);
+  return toAbsolutePath(raw, projectRoot);
 }
 
 function isSectionHeader(line: string): boolean {
   return line.startsWith(ADD_FILE) || line.startsWith(DELETE_FILE) || line.startsWith(UPDATE_FILE);
 }
 
-function parsePatchSections(patchText: string): PatchSection[] {
+function parsePatchSections(patchText: string, projectRoot: string): PatchSection[] {
   const normalized = patchText.replace(/\r\n?/g, '\n');
   const lines = normalized.split('\n');
   const begin = lines.findIndex((line) => line.trim() === BEGIN_PATCH);
@@ -100,7 +101,7 @@ function parsePatchSections(patchText: string): PatchSection[] {
     }
 
     if (line.startsWith(ADD_FILE)) {
-      const filePath = parseHeaderPath(line, ADD_FILE);
+      const filePath = parseHeaderPath(line, ADD_FILE, projectRoot);
       i++;
       const addLines: string[] = [];
       while (i < end && !isSectionHeader(lines[i])) {
@@ -125,18 +126,18 @@ function parsePatchSections(patchText: string): PatchSection[] {
     if (line.startsWith(DELETE_FILE)) {
       sections.push({
         type: 'delete',
-        filePath: parseHeaderPath(line, DELETE_FILE),
+        filePath: parseHeaderPath(line, DELETE_FILE, projectRoot),
       });
       i++;
       continue;
     }
 
     if (line.startsWith(UPDATE_FILE)) {
-      const filePath = parseHeaderPath(line, UPDATE_FILE);
+      const filePath = parseHeaderPath(line, UPDATE_FILE, projectRoot);
       i++;
       let movePath: string | undefined;
       if (i < end && lines[i].startsWith(MOVE_TO)) {
-        movePath = parseHeaderPath(lines[i], MOVE_TO);
+        movePath = parseHeaderPath(lines[i], MOVE_TO, projectRoot);
         i++;
       }
 
@@ -337,7 +338,10 @@ async function getOrLoadState(state: MutableState, filePath: string): Promise<Fi
   return value;
 }
 
-async function executeApplyPatch(input: z.infer<typeof applyPatchSchema>): Promise<string> {
+async function executeApplyPatch(
+  input: z.infer<typeof applyPatchSchema>,
+  projectRoot: string,
+): Promise<string> {
   const patchText = input.patchText || input.patch;
   if (!patchText) {
     return 'apply_patch failed: patchText or patch is required';
@@ -345,7 +349,7 @@ async function executeApplyPatch(input: z.infer<typeof applyPatchSchema>): Promi
 
   let sections: PatchSection[];
   try {
-    sections = parsePatchSections(patchText);
+    sections = parsePatchSections(patchText, projectRoot);
   } catch (error) {
     return `apply_patch verification failed: ${error instanceof Error ? error.message : String(error)}`;
   }
@@ -364,7 +368,7 @@ async function executeApplyPatch(input: z.infer<typeof applyPatchSchema>): Promi
         return `apply_patch verification failed: file already exists: ${section.filePath}`;
       }
       state.current.set(section.filePath, section.content);
-      summary.push(`A ${nodePath.relative(process.cwd(), section.filePath) || section.filePath}`);
+      summary.push(`A ${nodePath.relative(projectRoot, section.filePath) || section.filePath}`);
       continue;
     }
 
@@ -374,7 +378,7 @@ async function executeApplyPatch(input: z.infer<typeof applyPatchSchema>): Promi
         return `apply_patch verification failed: file does not exist: ${section.filePath}`;
       }
       state.current.set(section.filePath, null);
-      summary.push(`D ${nodePath.relative(process.cwd(), section.filePath) || section.filePath}`);
+      summary.push(`D ${nodePath.relative(projectRoot, section.filePath) || section.filePath}`);
       continue;
     }
 
@@ -398,13 +402,13 @@ async function executeApplyPatch(input: z.infer<typeof applyPatchSchema>): Promi
       state.current.set(section.filePath, null);
       state.current.set(section.movePath, updatedContent);
       summary.push(
-        `M ${nodePath.relative(process.cwd(), section.filePath) || section.filePath} -> ${
-          nodePath.relative(process.cwd(), section.movePath) || section.movePath
+        `M ${nodePath.relative(projectRoot, section.filePath) || section.filePath} -> ${
+          nodePath.relative(projectRoot, section.movePath) || section.movePath
         }`,
       );
     } else {
       state.current.set(section.filePath, updatedContent);
-      summary.push(`M ${nodePath.relative(process.cwd(), section.filePath) || section.filePath}`);
+      summary.push(`M ${nodePath.relative(projectRoot, section.filePath) || section.filePath}`);
     }
   }
 
@@ -437,5 +441,5 @@ tool({
   name: 'apply_patch',
   description: 'Apply a patch using Codex-style envelope format (*** Begin Patch ... *** End Patch).',
   schema: applyPatchSchema,
-  execute: executeApplyPatch,
+  execute: async (input, context) => executeApplyPatch(input, getToolProjectRoot(context)),
 });

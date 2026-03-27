@@ -13,10 +13,18 @@ import {
   Session,
 } from "@kigo/core";
 import { getConfigManager } from "../config/ConfigManager.js";
-import { CompactionRuntime, SubAgentRuntime, registry, SkillLoader, type Tool as RuntimeTool } from "@kigo/tools";
+import {
+  CompactionRuntime,
+  MailboxStore,
+  SubAgentRuntime,
+  registry,
+  SkillLoader,
+  type Tool as RuntimeTool,
+} from "@kigo/tools";
 import { MCPManager } from "@kigo/mcp";
 import { StatusLine } from "../display/StatusLine.js";
 import { SlashCommandRegistry } from "../commands/slash/Registry.js";
+import type { TaskSchedulerState } from "../commands/slash/types.js";
 import { HelpCommand } from "../commands/slash/definitions/HelpCommand.js";
 import { ClearCommand } from "../commands/slash/definitions/ClearCommand.js";
 import { StatusCommand } from "../commands/slash/definitions/StatusCommand.js";
@@ -28,6 +36,7 @@ import { TaskCommand } from "../commands/slash/definitions/TaskCommand.js";
 import { PlanCommand } from "../commands/slash/definitions/PlanCommand.js";
 import { ToolsCommand } from "../commands/slash/definitions/ToolsCommand.js";
 import { AgentCommand } from "../commands/slash/definitions/AgentCommand.js";
+import { MailCommand } from "../commands/slash/definitions/MailCommand.js";
 import { PermissionController } from "./PermissionController.js";
 import { promptForToolApproval } from "./approvalPrompt.js";
 import { PlanSessionController } from "./PlanSessionController.js";
@@ -62,6 +71,20 @@ export type RuntimeEvent = {
   toolArgs?: any;
   questionnaire?: AnswerQuestionsPayload | null;
 };
+
+const AUTO_RESUME_POLL_MS = 3000;
+
+function createTaskSchedulerStateSnapshot(
+  state: TaskSchedulerState,
+  interactiveRunCount: number,
+  autoResumeInFlight: boolean,
+): TaskSchedulerState {
+  return {
+    ...state,
+    interactiveRunCount,
+    autoResumeInFlight,
+  };
+}
 
 const KIGO_SYSTEM_TEMPLATE = `
 You are Kigo, an autonomous AI coding agent and interactive CLI tool.
@@ -422,7 +445,7 @@ export async function createInteractiveRuntime(
 
   const createGuardedTool = (tool: RuntimeTool): RuntimeTool => ({
     ...tool,
-    execute: async (params: any): Promise<string> => {
+    execute: async (params: any, executionContext?: any): Promise<string> => {
       const toolSource = toolSourceMap.get(tool.name) || "builtin";
       const modeDecision = executionMode.evaluateTool(tool.name);
       if (!modeDecision.allowed) {
@@ -451,7 +474,7 @@ export async function createInteractiveRuntime(
       }
 
       const result = await runWithTimeout(
-        Promise.resolve(tool.execute(params)),
+        Promise.resolve(tool.execute(params, executionContext)),
         toolsConfig.timeoutMs,
       );
       return truncateOutput(result, toolsConfig.maxOutputChars);
@@ -477,6 +500,7 @@ export async function createInteractiveRuntime(
     maxDepth: 2,
   });
   const taskManager = new TaskManager(subAgentManager, sessionId);
+  const mailboxStore = new MailboxStore(process.cwd());
 
   // Create agent
   const agent = new Agent({
@@ -486,6 +510,9 @@ export async function createInteractiveRuntime(
     reasoningEffort: providerConfig.reasoningEffort,
     sessionId,
     compaction: compactionConfig,
+    toolContext: () => ({
+      agentId: executionMode.getActiveAgentId(),
+    }),
   });
   if (sessionHistory.length > 0) {
     agent.loadMessages(sessionHistory);
@@ -505,6 +532,73 @@ export async function createInteractiveRuntime(
   });
 
   const statusLine = new StatusLine(sessionId, modelName);
+  let interactiveRunCount = 0;
+  let autoResumeInFlight = false;
+  const taskSchedulerState: TaskSchedulerState = {
+    enabled: true,
+    pollMs: AUTO_RESUME_POLL_MS,
+    interactiveRunCount: 0,
+    autoResumeInFlight: false,
+  };
+
+  const markSchedulerSkip = (reason: TaskSchedulerState["lastSkipReason"]): void => {
+    taskSchedulerState.lastTickAt = Date.now();
+    taskSchedulerState.lastSkipReason = reason;
+    taskSchedulerState.lastResumedCount = 0;
+  };
+
+  const autoResumeTimer = setInterval(() => {
+    taskSchedulerState.lastTickAt = Date.now();
+    taskSchedulerState.interactiveRunCount = interactiveRunCount;
+    taskSchedulerState.autoResumeInFlight = autoResumeInFlight;
+
+    if (interactiveRunCount > 0 || autoResumeInFlight) {
+      markSchedulerSkip(interactiveRunCount > 0 ? "interactive_busy" : "scheduler_busy");
+      return;
+    }
+    if (executionMode.isPlanMode()) {
+      markSchedulerSkip("plan_mode");
+      return;
+    }
+    if (taskManager.getStats().running > 0) {
+      markSchedulerSkip("task_running");
+      return;
+    }
+
+    autoResumeInFlight = true;
+    taskSchedulerState.autoResumeInFlight = true;
+    void taskManager
+      .runResumableTaskNodes({ limit: 1, runInBackground: true })
+      .then((records) => {
+        taskSchedulerState.lastTickAt = Date.now();
+        if (records.length === 0) {
+          markSchedulerSkip("no_resumable_tasks");
+          taskSchedulerState.lastError = undefined;
+          return;
+        }
+
+        const latest = records[records.length - 1];
+        taskSchedulerState.lastResumeAt = Date.now();
+        taskSchedulerState.lastResumedTaskId = latest.taskNodeId;
+        taskSchedulerState.lastResumeRunId = latest.id;
+        taskSchedulerState.lastResumedCount = records.length;
+        taskSchedulerState.lastSkipReason = undefined;
+        taskSchedulerState.lastError = undefined;
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        taskSchedulerState.lastTickAt = Date.now();
+        taskSchedulerState.lastSkipReason = "error";
+        taskSchedulerState.lastError = message;
+        taskSchedulerState.lastResumedCount = 0;
+        console.error(chalk.dim(`Auto-resume failed: ${message}`));
+      })
+      .finally(() => {
+        autoResumeInFlight = false;
+        taskSchedulerState.autoResumeInFlight = false;
+        taskSchedulerState.interactiveRunCount = interactiveRunCount;
+      });
+  }, AUTO_RESUME_POLL_MS);
 
   // Initialize slash command registry
   const slashRegistry = new SlashCommandRegistry();
@@ -519,79 +613,87 @@ export async function createInteractiveRuntime(
   slashRegistry.register(new PlanCommand());
   slashRegistry.register(new AgentCommand());
   slashRegistry.register(new ToolsCommand());
+  slashRegistry.register(new MailCommand());
 
   async function runInput(
     input: string,
     onEvent: (event: RuntimeEvent) => void
   ): Promise<void> {
+    interactiveRunCount += 1;
+    taskSchedulerState.interactiveRunCount = interactiveRunCount;
     let lastUsage: any = undefined;
     let sawDone = false;
     const toolCallNameMap = new Map<string, string>();
 
-    for await (const event of scheduler.run(input)) {
-      if (event.type === "tool_call") {
-        toolCallNameMap.set(event.data.id, event.data.name);
-        let args = {};
-        try {
-          args = JSON.parse(event.data.arguments || "{}");
-        } catch (e) {
-          args = { raw: event.data.arguments };
+    try {
+      for await (const event of scheduler.run(input)) {
+        if (event.type === "tool_call") {
+          toolCallNameMap.set(event.data.id, event.data.name);
+          let args = {};
+          try {
+            args = JSON.parse(event.data.arguments || "{}");
+          } catch (e) {
+            args = { raw: event.data.arguments };
+          }
+          onEvent({
+            type: event.type,
+            data: event.data,
+            toolName: event.data.name,
+            toolArgs: args,
+          });
+          continue;
         }
-        onEvent({
-          type: event.type,
-          data: event.data,
-          toolName: event.data.name,
-          toolArgs: args,
-        });
-        continue;
+
+        if (event.type === "tool_output") {
+          const toolName = toolCallNameMap.get(event.data.id) || "tool";
+          const questionnaire = parseAnswerQuestionsPayload(event.data.result);
+          onEvent({
+            type: event.type,
+            data: event.data,
+            toolName,
+            questionnaire,
+          });
+        } else {
+          onEvent({
+            type: event.type,
+            data: event.data,
+          });
+        }
+
+        if (event.type === "done") {
+          lastUsage = event.data?.usage;
+          sawDone = true;
+        }
       }
 
-      if (event.type === "tool_output") {
-        const toolName = toolCallNameMap.get(event.data.id) || "tool";
-        const questionnaire = parseAnswerQuestionsPayload(event.data.result);
-        onEvent({
-          type: event.type,
-          data: event.data,
-          toolName,
-          questionnaire,
-        });
-      } else {
-        onEvent({
-          type: event.type,
-          data: event.data,
-        });
+      // Persist new messages in order
+      const messages = agent.getMessages();
+      if (messages.length > lastSavedMessageIndex) {
+        const newMessages = messages.slice(lastSavedMessageIndex);
+        await session.saveMessages(newMessages);
+        lastSavedMessageIndex = messages.length;
       }
 
-      if (event.type === "done") {
-        lastUsage = event.data?.usage;
-        sawDone = true;
+      if (lastUsage) {
+        session.recordUsage(lastUsage);
       }
-    }
+      session.updateContextTokens(session.getContextTokenCount());
 
-    // Persist new messages in order
-    const messages = agent.getMessages();
-    if (messages.length > lastSavedMessageIndex) {
-      const newMessages = messages.slice(lastSavedMessageIndex);
-      await session.saveMessages(newMessages);
-      lastSavedMessageIndex = messages.length;
-    }
-
-    if (lastUsage) {
-      session.recordUsage(lastUsage);
-    }
-    session.updateContextTokens(session.getContextTokenCount());
-
-    if (sawDone) {
-      const latestAssistant = [...messages]
-        .reverse()
-        .find((message) => message.role === "assistant" && message.content.trim().length > 0);
-      if (latestAssistant) {
-        await planSessionController.captureDraft(latestAssistant.content);
+      if (sawDone) {
+        const latestAssistant = [...messages]
+          .reverse()
+          .find((message) => message.role === "assistant" && message.content.trim().length > 0);
+        if (latestAssistant) {
+          await planSessionController.captureDraft(latestAssistant.content);
+        }
       }
-    }
 
-    // Update status line
-    statusLine.updateUsage(session.getUsage() as any);
+      // Update status line
+      statusLine.updateUsage(session.getUsage() as any);
+    } finally {
+      interactiveRunCount = Math.max(0, interactiveRunCount - 1);
+      taskSchedulerState.interactiveRunCount = interactiveRunCount;
+    }
   }
 
   async function handleSlashCommand(
@@ -606,12 +708,15 @@ export async function createInteractiveRuntime(
       permissionController,
       planSessionController,
       taskManager,
+      mailboxStore,
       isPlanModeEnabled: () => executionMode.isPlanMode(),
       setPlanModeEnabled: (enabled: boolean) => {
         executionMode.setActiveAgent(enabled ? "plan" : "build");
       },
       getActiveAgentId: () => executionMode.getActiveAgentId(),
       setActiveAgentId: (id: string) => executionMode.setActiveAgent(id),
+      getTaskSchedulerState: () =>
+        createTaskSchedulerStateSnapshot(taskSchedulerState, interactiveRunCount, autoResumeInFlight),
       toolsCatalog: [
         ...toolsCatalog.map((tool) => ({
           name: tool.name,
@@ -626,6 +731,7 @@ export async function createInteractiveRuntime(
       ],
       registry: slashRegistry,
       cleanup: async () => {
+        clearInterval(autoResumeTimer);
         compactionRuntime.remove(sessionId);
         await mcpManager.close();
         session.close();
@@ -638,6 +744,7 @@ export async function createInteractiveRuntime(
   }
 
   async function close(): Promise<void> {
+    clearInterval(autoResumeTimer);
     compactionRuntime.remove(sessionId);
     await mcpManager.close();
     session.close();
@@ -654,5 +761,7 @@ export async function createInteractiveRuntime(
     setPlanModeEnabled: (enabled: boolean) => {
       executionMode.setActiveAgent(enabled ? "plan" : "build");
     },
+    getTaskSchedulerState: () =>
+      createTaskSchedulerStateSnapshot(taskSchedulerState, interactiveRunCount, autoResumeInFlight),
   };
 }

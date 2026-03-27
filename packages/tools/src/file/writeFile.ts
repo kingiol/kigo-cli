@@ -4,8 +4,8 @@
 
 import { z } from 'zod';
 import { tool } from '../registry.js';
-import { SecurityGuard } from '../security.js';
 import { generateDiff } from './diff.js';
+import { resolveToolPath } from '../toolContext.js';
 
 export const writeFileSchema = z.object({
   path: z.string().describe('The path to the file to write'),
@@ -16,8 +16,8 @@ tool({
   name: 'write_file',
   description: 'Write content to a file. Creates a unified diff showing changes.',
   schema: writeFileSchema,
-  execute: async ({ path, content }) => {
-    const sanitizedPath = SecurityGuard.sanitizePath(path);
+  execute: async ({ path, content }, context) => {
+    const sanitizedPath = resolveToolPath(path, context);
 
     const fs = await import('node:fs/promises');
     const pathModule = await import('node:path');

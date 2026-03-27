@@ -11,6 +11,7 @@ export const SUB_AGENT_TOOL_NAME = 'sub_agent_run';
 export const subAgentSchema = z.object({
   task: z.string().min(1),
   context: z.string().optional(),
+  agentId: z.string().min(1).optional(),
   profile: z.string().optional(),
   systemPrompt: z.string().optional(),
   model: z.string().optional(),
@@ -67,6 +68,7 @@ export function registerSubAgentTool(
       const result = await manager.runSubAgent({
         task: params.task,
         context: params.context,
+        agentId: params.agentId,
         profileId: params.profile,
         systemPrompt: params.systemPrompt,
         model: params.model,

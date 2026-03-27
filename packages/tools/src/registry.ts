@@ -3,6 +3,7 @@
  */
 
 import { z } from 'zod';
+import type { ToolExecutionContext } from '@kigo/core';
 import { SecurityGuard } from './security.js';
 
 import { zodToJsonSchema } from 'zod-to-json-schema';
@@ -11,7 +12,7 @@ export interface Tool {
   name: string;
   description: string;
   parameters: any; // JSON schema
-  execute: (params: any) => Promise<string>;
+  execute: (params: any, context?: ToolExecutionContext) => Promise<string>;
 }
 
 export type ToolSource = 'builtin' | 'local' | 'plugin';
@@ -28,7 +29,7 @@ export interface ToolDefinition<T extends z.ZodType> {
   name: string;
   description: string;
   schema: T;
-  execute: (params: z.infer<T>) => Promise<string>;
+  execute: (params: z.infer<T>, context?: ToolExecutionContext) => Promise<string>;
   allowedTools?: string[];
 }
 
@@ -66,12 +67,12 @@ export class ToolRegistry {
       name: definition.name,
       description: definition.description,
       parameters: zodToJsonSchema(definition.schema),
-      execute: async (params: any) => {
+      execute: async (params: any, context?: ToolExecutionContext) => {
         // Validate parameters
         const validated = definition.schema.parse(params);
 
         // Execute with security filtering
-        const result = await definition.execute(validated);
+        const result = await definition.execute(validated, context);
 
         // Filter sensitive output
         return SecurityGuard.filterSensitiveOutput(result);
@@ -177,15 +178,15 @@ export function createTool<T extends z.ZodType>(
   name: string,
   description: string,
   schema: T,
-  execute: (params: z.infer<T>) => Promise<string>
+  execute: (params: z.infer<T>, context?: ToolExecutionContext) => Promise<string>
 ): Tool {
   const tool: Tool = {
     name,
     description,
     parameters: zodToJsonSchema(schema),
-    execute: async (params: any) => {
+    execute: async (params: any, context?: ToolExecutionContext) => {
       const validated = schema.parse(params);
-      const result = await execute(validated);
+      const result = await execute(validated, context);
       return SecurityGuard.filterSensitiveOutput(result);
     },
   };

@@ -7,6 +7,7 @@ import * as nodePath from 'node:path';
 import { z } from 'zod';
 import { tool } from '../registry.js';
 import { SecurityGuard } from '../security.js';
+import { getToolProjectRoot } from '../toolContext.js';
 
 const editOperationSchema = z.object({
   oldString: z.string().describe('Text to find in file'),
@@ -24,7 +25,7 @@ export const multiEditSchema = z
     message: 'filePath or path is required',
   });
 
-function toAbsolutePath(inputPath: string): string {
+function toAbsolutePath(inputPath: string, projectRoot: string): string {
   const sanitized = SecurityGuard.sanitizePath(inputPath);
   const validationError = SecurityGuard.validatePath(sanitized);
   if (validationError) {
@@ -33,7 +34,7 @@ function toAbsolutePath(inputPath: string): string {
 
   return nodePath.isAbsolute(sanitized)
     ? nodePath.normalize(sanitized)
-    : nodePath.resolve(process.cwd(), sanitized);
+    : nodePath.resolve(projectRoot, sanitized);
 }
 
 function countOccurrences(content: string, needle: string): number {
@@ -54,8 +55,9 @@ tool({
   description:
     'Apply multiple find/replace edits to one file in order. All edits must succeed or no changes are written.',
   schema: multiEditSchema,
-  execute: async ({ filePath, path, edits }) => {
-    const targetPath = toAbsolutePath(filePath || path || '');
+  execute: async ({ filePath, path, edits }, context) => {
+    const projectRoot = getToolProjectRoot(context);
+    const targetPath = toAbsolutePath(filePath || path || '', projectRoot);
 
     let content = '';
     let fileExists = true;
@@ -114,7 +116,7 @@ tool({
     await fs.mkdir(nodePath.dirname(targetPath), { recursive: true });
     await fs.writeFile(targetPath, nextContent, 'utf-8');
 
-    const relative = nodePath.relative(process.cwd(), targetPath) || targetPath;
+    const relative = nodePath.relative(projectRoot, targetPath) || targetPath;
     return `Applied ${edits.length} edit(s) to ${relative}\n${replacementSummary.join('\n')}`;
   },
 });

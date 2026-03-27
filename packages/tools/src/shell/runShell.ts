@@ -6,17 +6,19 @@ import { z } from 'zod';
 import { tool } from '../registry.js';
 import { SecurityGuard } from '../security.js';
 import { spawn } from 'node:child_process';
+import { getToolProjectRoot } from '../toolContext.js';
 
 // Background shell manager
 class BackgroundShellManager {
   private static shells = new Map<string, { process: any; output: string[]; status: string }>();
   private static shellIdCounter = 0;
 
-  static spawn(command: string, timeout: number = 300000): string {
+  static spawn(command: string, timeout: number = 300000, cwd?: string): string {
     const shellId = `shell_${++this.shellIdCounter}`;
 
     const proc = spawn('bash', ['-c', command], {
       timeout,
+      cwd,
     });
 
     const output: string[] = [];
@@ -81,21 +83,24 @@ tool({
   name: 'run_shell',
   description: 'Execute a shell command. Returns the output.',
   schema: runShellSchema,
-  execute: async ({ command, timeout, background }) => {
+  execute: async ({ command, timeout, background }, context) => {
     // Validate command
     const error = SecurityGuard.validateCommand(command);
     if (error) {
       return error;
     }
 
+    const cwd = getToolProjectRoot(context);
+
     if (background) {
-      const shellId = BackgroundShellManager.spawn(command, timeout * 1000);
+      const shellId = BackgroundShellManager.spawn(command, timeout * 1000, cwd);
       return `Started background shell: ${shellId}`;
     }
 
     return new Promise((resolve, _reject) => {
       const proc = spawn('bash', ['-c', command], {
         timeout: timeout * 1000,
+        cwd,
       });
 
       let _stdout = '';
@@ -168,7 +173,7 @@ tool({
   schema: z.object({
     args: z.string().describe('Git command arguments'),
   }),
-  execute: async ({ args }) => {
+  execute: async ({ args }, context) => {
     const command = `git ${args}`;
 
     // Validate command (but allow all git commands)
@@ -180,6 +185,7 @@ tool({
     return new Promise((resolve, _reject) => {
       const proc = spawn('git', args.split(' '), {
         timeout: 30000,
+        cwd: getToolProjectRoot(context),
       });
 
       let stdout = '';

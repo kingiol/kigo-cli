@@ -2,7 +2,7 @@
  * Agent class for managing AI interactions
  */
 
-import type { Tool, StreamingEvent, Message } from '../types.js';
+import type { Tool, StreamingEvent, Message, ToolExecutionContext } from '../types.js';
 import type { BaseProvider } from '../models/BaseProvider.js';
 import type { ProviderCapabilities } from '../models/BaseProvider.js';
 import {
@@ -16,6 +16,7 @@ import {
 export interface AgentOptions {
   provider: BaseProvider;
   systemPrompt: string;
+  projectRoot?: string;
   tools?: Tool[];
   maxTokens?: number;
   temperature?: number;
@@ -31,6 +32,7 @@ export interface AgentOptions {
   blockedTools?: string[];
   responseFormat?: any;
   compaction?: Partial<AgentCompactionOptions>;
+  toolContext?: Partial<ToolExecutionContext> | (() => Partial<ToolExecutionContext>);
   toolRateLimit?: {
     maxCalls: number;
     windowMs: number;
@@ -275,6 +277,14 @@ export class Agent {
     return false;
   }
 
+  private resolveToolContext(): Partial<ToolExecutionContext> {
+    const toolContext = this.options.toolContext;
+    if (!toolContext) {
+      return {};
+    }
+    return typeof toolContext === 'function' ? toolContext() : toolContext;
+  }
+
   private async *executeToolCallsParallel(toolCalls: any[]): AsyncGenerator<StreamingEvent> {
     const tasks = toolCalls.map(async (toolCall) => {
       const events: StreamingEvent[] = [];
@@ -344,6 +354,8 @@ export class Agent {
     const prevToolCallId = env.KIGO_TOOL_CALL_ID;
     const prevToolName = env.KIGO_TOOL_NAME;
     const prevSubAgentDepth = env.KIGO_SUB_AGENT_DEPTH;
+    const prevAgentId = env.KIGO_AGENT_ID;
+    const extraContext = this.resolveToolContext();
 
     if (useEnv) {
       if (this.options.sessionId) {
@@ -358,6 +370,9 @@ export class Agent {
       if (this.subAgentDepth !== undefined) {
         env.KIGO_SUB_AGENT_DEPTH = String(this.subAgentDepth);
       }
+      if (extraContext.agentId) {
+        env.KIGO_AGENT_ID = extraContext.agentId;
+      }
     }
 
     try {
@@ -368,7 +383,14 @@ export class Agent {
         throw new Error(`Invalid tool arguments for ${toolCall.name}: ${String(error)}`);
       }
 
-      const result = await tool.execute(args);
+      const result = await tool.execute(args, {
+        projectRoot: this.options.projectRoot,
+        sessionId: this.options.sessionId,
+        ...extraContext,
+        toolCallId: toolCall.id,
+        toolName: toolCall.name,
+        subAgentDepth: this.subAgentDepth,
+      });
       yield { type: 'tool_output', data: { id: toolCall.id, result } };
       this.messages.push({
         role: 'tool',
@@ -404,6 +426,11 @@ export class Agent {
           delete env.KIGO_SUB_AGENT_DEPTH;
         } else {
           env.KIGO_SUB_AGENT_DEPTH = prevSubAgentDepth;
+        }
+        if (prevAgentId === undefined) {
+          delete env.KIGO_AGENT_ID;
+        } else {
+          env.KIGO_AGENT_ID = prevAgentId;
         }
       }
     }
@@ -449,7 +476,7 @@ export class Agent {
     const { messages, artifact } = await compactConversation({
       messages: this.messages,
       provider: this.options.provider,
-      projectRoot: process.env.KIGO_PROJECT_ROOT || process.cwd(),
+      projectRoot: this.options.projectRoot || process.env.KIGO_PROJECT_ROOT || process.cwd(),
       mode: options.mode || 'manual',
       reason: options.reason,
       config: this.compactionOptions,

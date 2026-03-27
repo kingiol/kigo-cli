@@ -32,6 +32,8 @@ export interface SubAgentProfile {
 export interface SubAgentRunOptions {
   task: string;
   context?: string;
+  projectRoot?: string;
+  agentId?: string;
   profileId?: string;
   systemPrompt?: string;
   model?: string;
@@ -185,6 +187,10 @@ export class SubAgentManager {
       const agent = new Agent({
         provider,
         systemPrompt,
+        projectRoot: options.projectRoot,
+        toolContext: {
+          agentId: options.agentId || `subagent:${mergedProfile.id}`,
+        },
         tools: selectedTools,
         maxTokens: mergedProfile.maxTokens,
         temperature: mergedProfile.temperature,

@@ -4,7 +4,7 @@
 
 import { z } from 'zod';
 import { tool } from '../registry.js';
-import { SecurityGuard } from '../security.js';
+import { resolveToolPath } from '../toolContext.js';
 
 export const listDirectorySchema = z.object({
   path: z.string().optional().describe('The path to the directory to list (default: current directory)'),
@@ -15,8 +15,8 @@ tool({
   name: 'list_directory',
   description: 'List the contents of a directory.',
   schema: listDirectorySchema,
-  execute: async ({ path: dirPath, showHidden }) => {
-    const sanitizedPath = SecurityGuard.sanitizePath(dirPath || '.');
+  execute: async ({ path: dirPath, showHidden }, context) => {
+    const sanitizedPath = resolveToolPath(dirPath || '.', context);
 
     const fs = await import('node:fs/promises');
     const entries = await fs.readdir(sanitizedPath, { withFileTypes: true });

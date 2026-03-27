@@ -54,6 +54,55 @@ function formatTaskNode(task: {
   return `  - #${task.id} [${task.status}] owner:${owner}${blocked}${lastRun} ${task.subject}`;
 }
 
+function formatDispatchTarget(target: {
+  task: { id: number; subject: string; owner: string; status: string };
+  mode: "execute" | "resume";
+  pendingInboxCount: number;
+  waitingType?: string;
+}): string {
+  const owner = target.task.owner || "-";
+  const pending = target.pendingInboxCount > 0 ? ` inbox:${target.pendingInboxCount}` : "";
+  const waiting = target.waitingType ? ` waiting:${target.waitingType}` : "";
+  return `  - #${target.task.id} [${target.mode}] taskStatus:${target.task.status} owner:${owner}${waiting}${pending} ${target.task.subject}`;
+}
+
+function formatThreadMessage(message: {
+  mailbox: "human" | "task";
+  id: string;
+  type: string;
+  from: string;
+  subject: string;
+  body: string;
+  createdAt: number;
+  acknowledgedAt?: number;
+}): string[] {
+  const ack = message.acknowledgedAt ? ` ack:${formatTime(message.acknowledgedAt)}` : "";
+  const preview = message.body.length > 160 ? `${message.body.slice(0, 160)}...` : message.body;
+  return [
+    `  - [${message.mailbox}] ${message.id} ${formatTime(message.createdAt)}${ack} ${message.type} from:${message.from}`,
+    `    ${message.subject}`,
+    `    ${preview}`,
+  ];
+}
+
+function formatProtocolMessage(message?: {
+  type: string;
+  from: string;
+  subject: string;
+  body: string;
+}): string {
+  if (!message) {
+    return "-";
+  }
+
+  const preview = message.body.length > 120 ? `${message.body.slice(0, 120)}...` : message.body;
+  return `[${message.type}] from:${message.from} subject:${message.subject} body:${preview}`;
+}
+
+function formatOptionalTime(ts?: number): string {
+  return ts ? formatTime(ts) : "-";
+}
+
 export class TaskCommand implements SlashCommand {
   name = "task";
   description = "Manage sub-agent runs and project task graph nodes";
@@ -100,17 +149,57 @@ export class TaskCommand implements SlashCommand {
     }
 
     if (action === "ready") {
-      const tasks = await taskManager.listTaskNodes({ readyOnly: true });
-      if (tasks.length === 0) {
-        console.log("No ready task nodes.");
+      const targets = await taskManager.listDispatchTargets();
+      if (targets.length === 0) {
+        console.log("No ready or resumable task nodes.");
         return;
       }
 
-      console.log(`\n${chalk.bold("Ready Task Nodes:")}`);
-      for (const task of tasks) {
-        console.log(formatTaskNode(task));
+      console.log(`\n${chalk.bold("Dispatchable Task Nodes:")}`);
+      for (const target of targets) {
+        console.log(formatDispatchTarget(target));
       }
       console.log("");
+      return;
+    }
+
+    if (action === "scheduler") {
+      const getSchedulerState = context.getTaskSchedulerState;
+      if (!getSchedulerState) {
+        console.log("Task scheduler state not available.");
+        return;
+      }
+
+      const state = getSchedulerState();
+      const dispatchStats = await taskManager.getDispatchStats();
+      const previewTargets = await taskManager.listDispatchTargets({ limit: 3 });
+      const runningTasks = taskManager.getStats().running;
+      console.log(`
+${chalk.bold("Task Scheduler:")}
+  enabled: ${state.enabled ? "yes" : "no"}
+  pollMs: ${state.pollMs}
+  planMode: ${context.isPlanModeEnabled ? (context.isPlanModeEnabled() ? "on" : "off") : "-"}
+  interactiveRuns: ${state.interactiveRunCount}
+  autoResumeInFlight: ${state.autoResumeInFlight ? "yes" : "no"}
+  runningTasks: ${runningTasks}
+  resumableTargets: ${dispatchStats.resumable}
+  executableTargets: ${dispatchStats.executable}
+  lastTickAt: ${formatOptionalTime(state.lastTickAt)}
+  lastResumeAt: ${formatOptionalTime(state.lastResumeAt)}
+  lastResumedTaskId: ${state.lastResumedTaskId ?? "-"}
+  lastResumeRunId: ${state.lastResumeRunId ?? "-"}
+  lastResumedCount: ${state.lastResumedCount ?? 0}
+  lastSkipReason: ${state.lastSkipReason ?? "-"}
+  lastError: ${state.lastError ?? "-"}
+`);
+
+      if (previewTargets.length > 0) {
+        console.log("  dispatchPreview:");
+        for (const target of previewTargets) {
+          console.log(formatDispatchTarget(target));
+        }
+        console.log("");
+      }
       return;
     }
 
@@ -134,15 +223,19 @@ export class TaskCommand implements SlashCommand {
       }
 
       const task = await taskManager.getTaskNode(Number(rawTaskId));
+      const latestRecord = taskManager.getLatestTaskRecordForTaskNode(Number(rawTaskId));
       console.log(`
 ${chalk.bold(`#${task.id}`)}
   status: ${task.status}
   owner: ${task.owner || "-"}
+  worktree: ${task.worktree || "-"}
   blockedBy: ${task.blockedBy.length ? task.blockedBy.join(", ") : "-"}
   blocks: ${task.blocks.length ? task.blocks.join(", ") : "-"}
   lastRunId: ${task.lastRunId || "-"}
   lastRunStatus: ${task.lastRunStatus || "-"}
   lastRunAt: ${task.lastRunAt ? formatTime(task.lastRunAt) : "-"}
+  mailboxId: ${latestRecord?.mailboxId || "-"}
+  waitingType: ${latestRecord?.waitingType || "-"}
   subject: ${task.subject}
   description: ${task.description || "-"}
   lastRunError: ${task.lastRunError || "-"}
@@ -155,6 +248,55 @@ ${chalk.bold(`#${task.id}`)}
         }
         console.log("");
       }
+      return;
+    }
+
+    if (action === "thread") {
+      const target = args[1]?.trim();
+      if (!target) {
+        console.log("Usage: /task thread <taskId|runId> [--pending]");
+        return;
+      }
+
+      const messages = await taskManager.getTaskMailboxThread(target, {
+        includeAcknowledged: !args.includes("--pending"),
+      });
+      if (messages.length === 0) {
+        console.log(`No mailbox thread for ${target}.`);
+        return;
+      }
+
+      console.log(`\n${chalk.bold(`Task Thread: ${target}`)}`);
+      for (const message of messages) {
+        for (const line of formatThreadMessage(message)) {
+          console.log(line);
+        }
+      }
+      console.log("");
+      return;
+    }
+
+    if (action === "protocol") {
+      const target = args[1]?.trim();
+      if (!target) {
+        console.log("Usage: /task protocol <taskId|runId>");
+        return;
+      }
+
+      const rounds = await taskManager.getTaskProtocolView(target);
+      if (rounds.length === 0) {
+        console.log(`No protocol rounds for ${target}.`);
+        return;
+      }
+
+      console.log(`\n${chalk.bold(`Task Protocol: ${target}`)}`);
+      for (const round of rounds) {
+        console.log(`  - Round ${round.index} [${round.waitingType}] ${round.waitingReason || "-"}`);
+        console.log(`    request: ${formatProtocolMessage(round.request)}`);
+        console.log(`    response: ${formatProtocolMessage(round.response)}`);
+        console.log(`    outcome: ${round.outcome || "-"}`);
+      }
+      console.log("");
       return;
     }
 
@@ -191,6 +333,71 @@ ${chalk.bold(`#${task.id}`)}
       const owner = args[2]?.trim() || `cli:${context.session.getId()}`;
       const task = await taskManager.claimTaskNode(Number(rawTaskId), owner);
       console.log(`Claimed task node #${task.id} for ${task.owner}`);
+      return;
+    }
+
+    if (action === "auto-claim") {
+      const limit = args[1] && /^\d+$/.test(args[1]) ? Number(args[1]) : 1;
+      const owner = (args[2] || "").trim() || undefined;
+      const claimed = await taskManager.autoClaimTaskNodes({ limit, owner });
+      if (claimed.length === 0) {
+        console.log("No ready task nodes available to claim.");
+        return;
+      }
+
+      console.log(`\n${chalk.bold("Claimed Task Nodes:")}`);
+      for (const task of claimed) {
+        console.log(formatTaskNode(task));
+      }
+      console.log("");
+      return;
+    }
+
+    if (action === "execute-ready") {
+      const runInBackground = args.includes("--background") || args.includes("-b");
+      const filteredArgs = args.slice(1).filter((arg) => arg !== "--background" && arg !== "-b");
+      const limit = filteredArgs[0] && /^\d+$/.test(filteredArgs[0]) ? Number(filteredArgs[0]) : 1;
+      const profileArg = filteredArgs.find((arg) => PROFILES.includes(arg as TaskProfile));
+      const profile = profileArg ? (profileArg as TaskProfile) : "general-purpose";
+
+      const records = await taskManager.runReadyTaskNodes({
+        limit,
+        profile,
+        runInBackground,
+      });
+
+      if (records.length === 0) {
+        console.log("No ready or resumable task nodes were executed.");
+        return;
+      }
+
+      if (runInBackground) {
+        console.log(`Started ${records.length} ready task node(s) in background.`);
+        return;
+      }
+
+      console.log(`\n${chalk.bold("Executed Ready Task Nodes:")}`);
+      for (const record of records) {
+        console.log(`  - ${record.id} task:#${record.taskNodeId} [${record.status}]`);
+      }
+      console.log("");
+      return;
+    }
+
+    if (action === "cleanup") {
+      const rawTaskId = args[1];
+      if (!rawTaskId || Number.isNaN(Number(rawTaskId))) {
+        console.log("Usage: /task cleanup <taskId>");
+        return;
+      }
+
+      const result = await taskManager.cleanupTaskWorktree(Number(rawTaskId));
+      if (!result.removed) {
+        console.log(`No worktree to clean up for task node #${rawTaskId}.`);
+        return;
+      }
+
+      console.log(`Removed worktree for task node #${rawTaskId}.`);
       return;
     }
 
@@ -288,12 +495,19 @@ ${chalk.bold(task.id)}
   profile: ${task.profile}
   status: ${task.status}
   taskNodeId: ${task.taskNodeId ?? "-"}
+  mailboxId: ${task.mailboxId ?? "-"}
+  waitingType: ${task.waitingType ?? "-"}
   created: ${formatTime(task.createdAt)}
   completed: ${task.completedAt ? formatTime(task.completedAt) : "-"}
 `);
 
       if (task.status === "completed") {
         console.log(`${task.output || "(empty)"}\n`);
+      } else if (task.status === "waiting") {
+        console.log(`Waiting for input${task.waitingReason ? `: ${task.waitingReason}` : ""}`);
+        if (task.output) {
+          console.log(`${task.output}\n`);
+        }
       } else if (task.status === "failed") {
         console.log(`Error: ${task.error || "unknown"}\n`);
       }
@@ -322,8 +536,67 @@ ${chalk.bold(task.id)}
       return;
     }
 
+    if (action === "answer") {
+      const separatorIndex = args.indexOf("--");
+      const target = args[1]?.trim();
+      const answer = separatorIndex === -1 ? "" : args.slice(separatorIndex + 1).join(" ").trim();
+      if (!target || !answer) {
+        console.log("Usage: /task answer <taskId|runId> -- <message>");
+        return;
+      }
+
+      const result = await taskManager.answerTask(target, answer);
+      if (!result.resumed) {
+        console.log(`Answer sent to ${result.mailboxId}, but the task was not resumed.`);
+        return;
+      }
+
+      if (result.resumed.status === "waiting") {
+        console.log(`Task is still waiting for input${result.resumed.waitingReason ? `: ${result.resumed.waitingReason}` : ""}`);
+        return;
+      }
+
+      if (result.resumed.status === "failed") {
+        console.log(`Resumed task failed: ${result.resumed.error || "unknown error"}`);
+        return;
+      }
+
+      console.log(`\n${chalk.bold(`Answered ${target} and resumed ${result.resumed.id}:`)}\n${result.resumed.output || "(empty)"}\n`);
+      return;
+    }
+
+    if (action === "approve") {
+      const target = args[1]?.trim();
+      const decision = (args[2] || "approve").trim().toLowerCase();
+      const separatorIndex = args.indexOf("--");
+      const note = separatorIndex === -1 ? "" : args.slice(separatorIndex + 1).join(" ").trim();
+      if (!target || !["approve", "reject"].includes(decision)) {
+        console.log("Usage: /task approve <taskId|runId> <approve|reject> [-- <note>]");
+        return;
+      }
+
+      const result = await taskManager.approveTask(target, decision === "approve", note);
+      if (!result.resumed) {
+        console.log(`Approval sent to ${result.mailboxId}, but the task was not resumed.`);
+        return;
+      }
+
+      if (result.resumed.status === "waiting") {
+        console.log(`Task is still waiting for input${result.resumed.waitingReason ? `: ${result.resumed.waitingReason}` : ""}`);
+        return;
+      }
+
+      if (result.resumed.status === "failed") {
+        console.log(`Resumed task failed: ${result.resumed.error || "unknown error"}`);
+        return;
+      }
+
+      console.log(`\n${chalk.bold(`${decision === "approve" ? "Approved" : "Rejected"} ${target} and resumed ${result.resumed.id}:`)}\n${result.resumed.output || "(empty)"}\n`);
+      return;
+    }
+
     console.log(
-      "Usage: /task [list|board|ready|create <subject>|show <id>|history [taskId|runId]|claim <id> [owner]|run|execute <id>|output <taskId|runId>|resume <taskId|runId>]",
+      "Usage: /task [list|board|ready|scheduler|create <subject>|show <id>|history [taskId|runId]|thread <taskId|runId> [--pending]|protocol <taskId|runId>|claim <id> [owner]|auto-claim [limit] [owner]|run|execute <id>|execute-ready [limit] [profile] [--background]|cleanup <id>|output <taskId|runId>|resume <taskId|runId>|answer <taskId|runId> -- <message>|approve <taskId|runId> <approve|reject> [-- <note>]]",
     );
   }
 }

@@ -6,7 +6,16 @@ export interface Tool {
   name: string;
   description: string;
   parameters: any; // Zod schema
-  execute: (params: any) => Promise<string>;
+  execute: (params: any, context?: ToolExecutionContext) => Promise<string>;
+}
+
+export interface ToolExecutionContext {
+  projectRoot?: string;
+  sessionId?: string;
+  agentId?: string;
+  toolCallId?: string;
+  toolName?: string;
+  subAgentDepth?: number;
 }
 
 export interface StreamingEvent {

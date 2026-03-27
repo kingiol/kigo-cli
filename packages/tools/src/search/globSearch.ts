@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import glob from 'fast-glob';
 import { tool } from '../registry.js';
+import { getToolProjectRoot, resolveToolPath } from '../toolContext.js';
 
 export const globSearchSchema = z.object({
   pattern: z.string().describe('Glob pattern to search for (e.g., "**/*.ts")'),
@@ -16,7 +17,7 @@ tool({
   name: 'glob_search',
   description: 'Find files matching a glob pattern. Supports ** for recursive search.',
   schema: globSearchSchema,
-  execute: async ({ pattern, path: searchPath, limit }) => {
+  execute: async ({ pattern, path: searchPath, limit }, context) => {
     const ignore = [
       '**/node_modules/**',
       '**/.git/**',
@@ -31,9 +32,11 @@ tool({
       '**/*.lock',
     ];
 
+    const root = searchPath ? resolveToolPath(searchPath, context) : getToolProjectRoot(context);
+
     try {
       const results = await glob(pattern, {
-        cwd: searchPath || process.cwd(),
+        cwd: root,
         ignore,
         absolute: false,
         onlyFiles: true,
@@ -48,7 +51,6 @@ tool({
       // Fallback: simple directory search
       if (!searchPath || error instanceof Error) {
         try {
-          const root = searchPath || process.cwd();
           const files = await glob(pattern.split('/').pop() || '*', {
             cwd: root,
             ignore,

@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { tool } from '../registry.js';
 import { SecurityGuard } from '../security.js';
 import { applyDiff } from './diffParser.js';
+import { resolveToolPath } from '../toolContext.js';
 
 export const editFileSchema = z.object({
   path: z.string().describe('The path to the file to edit'),
@@ -16,8 +17,8 @@ tool({
   name: 'edit_file',
   description: 'Edit a file by applying a unified diff. Use this for precise edits.',
   schema: editFileSchema,
-  execute: async ({ path, diff }) => {
-    const sanitizedPath = SecurityGuard.sanitizePath(path);
+  execute: async ({ path, diff }, context) => {
+    const sanitizedPath = resolveToolPath(path, context);
 
     // Check file size
     const sizeError = await SecurityGuard.checkFileSize(sanitizedPath, 50);

@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import { tool } from '../registry.js';
 import { SecurityGuard } from '../security.js';
+import { resolveToolPath } from '../toolContext.js';
 
 export const readFileSchema = z.object({
   path: z.string().describe('The path to the file to read'),
@@ -16,8 +17,8 @@ tool({
   name: 'read_file',
   description: 'Read the contents of a file. Supports line numbers and pagination.',
   schema: readFileSchema,
-  execute: async ({ path, offset, limit }) => {
-    const sanitizedPath = SecurityGuard.sanitizePath(path);
+  execute: async ({ path, offset, limit }, context) => {
+    const sanitizedPath = resolveToolPath(path, context);
 
     // Check file size
     const sizeError = await SecurityGuard.checkFileSize(sanitizedPath, 50);
