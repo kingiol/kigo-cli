@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isMutatingTool, type ToolExecutionSource } from "@kigo/core";
+import { isMutatingTool, type ToolExecutionSource } from "./approval.js";
 
 export type PlanSessionState = "inactive" | "drafting" | "approved" | "applied";
 

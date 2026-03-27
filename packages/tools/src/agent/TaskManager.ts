@@ -4,13 +4,15 @@ import * as path from "node:path";
 import type { SubAgentManager, SubAgentRunOptions } from "@kigo/core";
 import {
   MailboxStore,
-  TaskGraphStore,
-  type TaskExecutionSummary,
   type MailMessage,
   type MailMessageType,
+} from "./mailbox.js";
+import {
+  TaskGraphStore,
+  type TaskExecutionSummary,
   type TaskNode,
   type TaskNodeStatus,
-} from "@kigo/tools";
+} from "./taskGraph.js";
 import { GitWorktreeManager } from "./GitWorktreeManager.js";
 
 export type TaskProfile =

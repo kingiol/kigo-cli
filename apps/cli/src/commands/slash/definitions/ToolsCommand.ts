@@ -1,11 +1,11 @@
 import chalk from "chalk";
-import { SlashCommand, CommandContext } from "../types.js";
+import { SlashCommand, type ToolsCommandContext } from "../types.js";
 
 export class ToolsCommand implements SlashCommand {
   name = "tools";
   description = "Search available tools by name or description";
 
-  async execute(args: string[], context: CommandContext): Promise<void> {
+  async execute(args: string[], context: ToolsCommandContext): Promise<void> {
     const catalog = context.toolsCatalog || [];
     if (catalog.length === 0) {
       console.log("No tools available.");

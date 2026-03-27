@@ -1,11 +1,11 @@
 import chalk from "chalk";
-import { SlashCommand, CommandContext } from "../types.js";
+import { SlashCommand, type PermissionsCommandContext } from "../types.js";
 
 export class PermissionsCommand implements SlashCommand {
   name = "permissions";
   description = "Show or manage permission runtime rules";
 
-  async execute(args: string[], context: CommandContext): Promise<void> {
+  async execute(args: string[], context: PermissionsCommandContext): Promise<void> {
     const controller = context.permissionController;
     if (!controller) {
       console.log("Permissions controller not available.");

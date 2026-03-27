@@ -1,10 +1,10 @@
-import { SlashCommand, CommandContext } from "../types.js";
+import { SlashCommand, type AgentCommandContext } from "../types.js";
 
 export class AgentCommand implements SlashCommand {
   name = "agent";
   description = "List or switch active primary agent";
 
-  async execute(args: string[], context: CommandContext): Promise<void> {
+  async execute(args: string[], context: AgentCommandContext): Promise<void> {
     const getActive = context.getActiveAgentId;
     const setActive = context.setActiveAgentId;
     const planController = context.planSessionController;

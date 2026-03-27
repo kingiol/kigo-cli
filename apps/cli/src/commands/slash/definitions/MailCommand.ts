@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { SlashCommand, CommandContext } from "../types.js";
+import { SlashCommand, type MailCommandContext } from "../types.js";
 
 function formatTimestamp(value?: number): string {
   return value ? new Date(value).toLocaleTimeString() : "-";
@@ -32,7 +32,7 @@ export class MailCommand implements SlashCommand {
   name = "mail";
   description = "Inspect and manage agent mailbox messages";
 
-  async execute(args: string[], context: CommandContext): Promise<void> {
+  async execute(args: string[], context: MailCommandContext): Promise<void> {
     const mailboxStore = context.mailboxStore;
     if (!mailboxStore) {
       console.log("Mailbox store not available.");

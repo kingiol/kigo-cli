@@ -1,11 +1,9 @@
 
-import { Agent, Session } from '@kigo/core';
+import { Agent, PlanSessionController, Session } from '@kigo/core';
 import { MCPManager } from '@kigo/mcp';
-import type { MailboxStore } from '@kigo/tools';
+import type { MailboxStore, TaskManager } from '@kigo/tools';
 import { getConfigManager } from '../../config/ConfigManager.js';
 import { PermissionController } from '../../interactive/PermissionController.js';
-import { PlanSessionController } from '../../interactive/PlanSessionController.js';
-import { TaskManager } from '../../interactive/TaskManager.js';
 
 export type ConfigManager = Awaited<ReturnType<typeof getConfigManager>>;
 
@@ -31,25 +29,98 @@ export interface TaskSchedulerState {
     lastError?: string;
 }
 
-export interface CommandContext {
+export interface ToolCatalogEntry {
+    name: string;
+    description: string;
+    source: 'builtin' | 'local' | 'plugin' | 'mcp';
+}
+
+export interface HasAgent {
     agent: Agent;
+}
+
+export interface HasSession {
     session: Session;
+}
+
+export interface HasConfigManager {
     configManager: ConfigManager;
+}
+
+export interface HasMCPManager {
     mcpManager: MCPManager;
+}
+
+export interface HasPermissionController {
     permissionController?: PermissionController;
+}
+
+export interface HasPlanSessionController {
     planSessionController?: PlanSessionController;
+}
+
+export interface HasTaskManager {
     taskManager?: TaskManager;
+}
+
+export interface HasMailboxStore {
     mailboxStore?: MailboxStore;
+}
+
+export interface HasPlanModeControls {
     isPlanModeEnabled?: () => boolean;
     setPlanModeEnabled?: (enabled: boolean) => void;
+}
+
+export interface HasActiveAgentControls {
     getActiveAgentId?: () => string;
     setActiveAgentId?: (id: string) => boolean;
+}
+
+export interface HasTaskSchedulerState {
     getTaskSchedulerState?: () => TaskSchedulerState;
-    toolsCatalog?: Array<{ name: string; description: string; source: 'builtin' | 'local' | 'plugin' | 'mcp' }>;
-    // Function to clean up resources (close connections, etc.)
+}
+
+export interface HasToolsCatalog {
+    toolsCatalog?: ToolCatalogEntry[];
+}
+
+export interface HasCleanup {
     cleanup?: () => Promise<void>;
+}
+
+export interface HasRegistry {
     registry: ISlashCommandRegistry;
 }
+
+export interface CommandContext extends
+    HasAgent,
+    HasSession,
+    HasConfigManager,
+    HasMCPManager,
+    HasPermissionController,
+    HasPlanSessionController,
+    HasTaskManager,
+    HasMailboxStore,
+    HasPlanModeControls,
+    HasActiveAgentControls,
+    HasTaskSchedulerState,
+    HasToolsCatalog,
+    HasCleanup,
+    HasRegistry {}
+
+export type HelpCommandContext = HasRegistry;
+export type ClearCommandContext = HasAgent & HasSession;
+export type ConfigCommandContext = HasConfigManager;
+export type ExitCommandContext = HasCleanup;
+export type SessionCommandContext = HasSession;
+export type ToolsCommandContext = HasToolsCatalog;
+export type MailCommandContext = HasMailboxStore & HasSession;
+export type PermissionsCommandContext = HasPermissionController;
+export type AgentCommandContext = HasActiveAgentControls & HasPlanSessionController;
+export type PlanCommandContext = HasAgent & HasPlanSessionController & HasPlanModeControls & HasActiveAgentControls;
+export type StatusCommandContext = HasAgent & HasSession & HasConfigManager & HasActiveAgentControls;
+export type TaskCommandContext = HasTaskManager & HasSession & HasTaskSchedulerState & HasPlanModeControls;
 
 export interface ISlashCommandRegistry {
     register(command: SlashCommand): void;

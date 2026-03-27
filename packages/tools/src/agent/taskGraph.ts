@@ -392,7 +392,7 @@ class TaskGraphStore {
   async recordExecution(input: {
     taskId: number;
     runId: string;
-    status: 'running' | 'completed' | 'failed';
+    status: 'running' | 'waiting' | 'completed' | 'failed';
     startedAt?: number;
     completedAt?: number;
     output?: string;

@@ -12,6 +12,7 @@ export * from './agent/PermissionController.js';
 export * from './agent/SubAgentManager.js';
 export * from './agent/AgentRegistry.js';
 export * from './agent/ExecutionMode.js';
+export * from './agent/PlanSessionController.js';
 export * from './session/Session.js';
 export * from './models/BaseProvider.js';
 export * from './models/OpenAIProvider.js';

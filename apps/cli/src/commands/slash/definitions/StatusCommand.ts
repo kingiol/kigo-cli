@@ -1,13 +1,13 @@
 
 import chalk from 'chalk';
-import { SlashCommand, CommandContext } from '../types.js';
+import { SlashCommand, type StatusCommandContext } from '../types.js';
 import { SessionUsage } from '../../../display/StatusLine.js';
 
 export class StatusCommand implements SlashCommand {
     name = 'status';
     description = 'Show session status';
 
-    async execute(_args: string[], context: CommandContext): Promise<void> {
+    async execute(_args: string[], context: StatusCommandContext): Promise<void> {
         const usage: SessionUsage = context.session.getUsage() as SessionUsage;
         const modelName = context.configManager.getModelName();
         const provider = context.configManager.getProvider();

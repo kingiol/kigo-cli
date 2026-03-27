@@ -1,12 +1,12 @@
 
 import chalk from 'chalk';
-import { SlashCommand, CommandContext } from '../types.js';
+import { SlashCommand, type ConfigCommandContext } from '../types.js';
 
 export class ConfigCommand implements SlashCommand {
     name = 'config';
     description = 'Show configuration';
 
-    async execute(_args: string[], context: CommandContext): Promise<void> {
+    async execute(_args: string[], context: ConfigCommandContext): Promise<void> {
         const config = await context.configManager.load();
         console.log(`
 ${chalk.bold('Configuration:')}

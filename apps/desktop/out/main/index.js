@@ -19,7 +19,7 @@ import require$$2$4 from "https";
 import zlib from "zlib";
 import require$$0$d, { Readable as Readable$5 } from "node:stream";
 import { ReadableStream as ReadableStream$4 } from "node:stream/web";
-import { spawn } from "node:child_process";
+import { spawn, execFile } from "node:child_process";
 import require$$0$8, { EventEmitter as EventEmitter$3 } from "events";
 import require$$0$9 from "os";
 import require$$0$a from "crypto";
@@ -34,7 +34,7 @@ import require$$2$5 from "node:http";
 import require$$5$2 from "node:querystring";
 import require$$6$2 from "node:events";
 import require$$0$h from "node:diagnostics_channel";
-import require$$0$g from "node:util";
+import require$$0$g, { promisify as promisify$2 } from "node:util";
 import require$$4$3 from "node:tls";
 import require$$0$i from "node:buffer";
 import require$$3$2 from "node:zlib";
@@ -180513,6 +180513,7 @@ tool({
     return JSON.stringify({ type: "task_claimed", task }, null, 2);
   }
 });
+promisify$2(execFile);
 const taskOutputSchema = objectType({
   taskId: stringType().optional().describe("Task id to fetch. Omit to list tasks."),
   sessionId: stringType().optional().describe("Session id. Defaults to current session."),

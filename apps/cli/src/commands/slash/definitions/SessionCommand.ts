@@ -1,12 +1,12 @@
 
 import chalk from 'chalk';
-import { SlashCommand, CommandContext } from '../types.js';
+import { SlashCommand, type SessionCommandContext } from '../types.js';
 
 export class SessionCommand implements SlashCommand {
     name = 'session';
     description = 'Show session info';
 
-    async execute(_args: string[], context: CommandContext): Promise<void> {
+    async execute(_args: string[], context: SessionCommandContext): Promise<void> {
         const sessions = await context.session.listSessions();
         console.log(`
 ${chalk.bold('Sessions:')}

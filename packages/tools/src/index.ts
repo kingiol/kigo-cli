@@ -27,6 +27,8 @@ export * from './agent/compact.js';
 export * from './agent/mailbox.js';
 export * from './agent/subAgent.js';
 export * from './agent/taskGraph.js';
+export * from './agent/GitWorktreeManager.js';
+export * from './agent/TaskManager.js';
 export * from './agent/taskOutput.js';
 export * from './agent/runtime.js';
 

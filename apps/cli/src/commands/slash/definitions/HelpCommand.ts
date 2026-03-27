@@ -1,12 +1,12 @@
 
 import chalk from 'chalk';
-import { SlashCommand, CommandContext } from '../types.js';
+import { SlashCommand, type HelpCommandContext } from '../types.js';
 
 export class HelpCommand implements SlashCommand {
     name = 'help';
     description = 'Show this help';
 
-    async execute(_args: string[], context: CommandContext): Promise<void> {
+    async execute(_args: string[], context: HelpCommandContext): Promise<void> {
         const commands = context.registry.getAll();
         console.log(`\n${chalk.bold('Available commands:')}`);
         for (const cmd of commands) {

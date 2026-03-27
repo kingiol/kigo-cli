@@ -1,10 +1,10 @@
-import { SlashCommand, CommandContext } from "../types.js";
+import { SlashCommand, type PlanCommandContext } from "../types.js";
 
 export class PlanCommand implements SlashCommand {
   name = "plan";
   description = "Manage the plan workflow and approval gate";
 
-  async execute(args: string[], context: CommandContext): Promise<void> {
+  async execute(args: string[], context: PlanCommandContext): Promise<void> {
     const getState = context.isPlanModeEnabled;
     const setState = context.setPlanModeEnabled;
     const setAgent = context.setActiveAgentId;

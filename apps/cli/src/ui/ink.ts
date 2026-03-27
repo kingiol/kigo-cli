@@ -1,12 +1,12 @@
 import { registry } from "@kigo/tools";
 import { getConfigManager } from "../config/ConfigManager.js";
-import {
-  createInteractiveRuntime,
-  type AnswerQuestionsPayload,
-  type InteractiveOptions,
-  type InteractiveRuntime,
-  type RuntimeEvent,
-} from "../interactive/runtime.js";
+import { createInteractiveRuntime } from "../interactive/runtime.js";
+import type {
+  AnswerQuestionsPayload,
+  InteractiveOptions,
+  InteractiveRuntime,
+  RuntimeEvent,
+} from "../interactive/runtimeTypes.js";
 import { ToolRenderer } from "../display/ToolRenderer.js";
 
 type OutputSection = {

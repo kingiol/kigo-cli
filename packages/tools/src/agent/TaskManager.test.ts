@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
 import { TaskManager } from "./TaskManager.js";
-import { MailboxStore } from "@kigo/tools";
+import { MailboxStore } from "./mailbox.js";
 
 const execFile = promisify(execFileCallback);
 const originalProjectRoot = process.env.KIGO_PROJECT_ROOT;
